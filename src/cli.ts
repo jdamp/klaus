@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
@@ -6,6 +7,7 @@ import type { AuthEvent, AuthInteraction, AuthPrompt, AuthType } from "@earendil
 
 import { bootstrapProviderAuth } from "./auth/bootstrap.js";
 import { parseConfig } from "./config.js";
+import { backupDatabase, restoreDatabase } from "./persistence/backup.js";
 import { buildApplication } from "./runtime/application.js";
 
 function argument(name: string, fallback?: string): string | undefined {
@@ -44,6 +46,25 @@ async function main(): Promise<void> {
     } finally {
       consoleInteraction.close();
     }
+    return;
+  }
+
+  if (process.argv[2] === "db" && process.argv[3] === "backup") {
+    const config = parseConfig(await readFile(configPath, "utf8"));
+    const destination = argument("--destination");
+    if (!destination) throw new Error("db backup requires --destination <path>");
+    const pages = await backupDatabase(join(config.data.directory, "klaus.sqlite"), destination);
+    stdout.write(`Backed up ${pages} SQLite pages to ${destination}\n`);
+    return;
+  }
+
+  if (process.argv[2] === "db" && process.argv[3] === "restore") {
+    const config = parseConfig(await readFile(configPath, "utf8"));
+    const source = argument("--backup");
+    if (!source) throw new Error("db restore requires --backup <path>");
+    const destination = join(config.data.directory, "klaus.sqlite");
+    await restoreDatabase(source, destination);
+    stdout.write(`Restored database to ${destination}\n`);
     return;
   }
 

@@ -56,7 +56,7 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
     );
   }
 
-  const mcp = new McpRegistry(config.mcp, new ToolAuditRepository(database));
+  const mcp = new McpRegistry(config.mcp, new ToolAuditRepository(database), undefined, redactor);
   const capabilities = new CapabilityComponent(mcp);
   const sessions = new SessionComponent(config, runtime, database, mcp);
   const api = new TelegramHttpClient(telegramToken);

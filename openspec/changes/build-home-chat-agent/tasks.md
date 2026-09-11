@@ -57,13 +57,13 @@
 ## 8. Packaging and Deployment
 
 - [ ] 8.1 Create a pinned multi-stage container build with a non-root runtime user, read-only application filesystem, writable data and Pi-authentication mounts, and a health check; verify the image builds and starts against temporary configuration and storage.
-- [ ] 8.2 Add documented local-development and example configuration/secret layouts with safe placeholders, including Telegram ID discovery, Pi OAuth bootstrap, and generic MCP settings; verify the examples pass configuration validation without containing real credentials.
-- [ ] 8.3 Add a single-replica k3s deployment example with persistent application and Pi-authentication storage, mounted Secrets, restricted security context, graceful termination, and replacement semantics; verify manifest rendering and policy checks succeed.
-- [ ] 8.4 Document SQLite backup, restore, migration, upgrade, and rollback procedures; verify a backup-and-restore smoke test recovers sessions, outbox state, and audit state into a fresh runtime.
+- [x] 8.2 Add documented local-development and example configuration/secret layouts with safe placeholders, including Telegram ID discovery, Pi OAuth bootstrap, and generic MCP settings; verify the examples pass configuration validation without containing real credentials.
+- [x] 8.3 Add a single-replica k3s deployment example with persistent application and Pi-authentication storage, mounted Secrets, restricted security context, graceful termination, and replacement semantics; verify manifest rendering and policy checks succeed.
+- [x] 8.4 Document SQLite backup, restore, migration, upgrade, and rollback procedures; verify a backup-and-restore smoke test recovers sessions, outbox state, and audit state into a fresh runtime.
 
 ## 9. Final Verification
 
 - [ ] 9.1 Run the complete formatting, lint, type-check, unit, integration, and migration suites and verify all project quality gates pass from a clean checkout.
-- [ ] 9.2 Execute security acceptance tests for unknown chats/users, ambient group messages, tool allowlist expansion, disabled coding tools, malicious tool output, and secret redaction; verify every case fails closed as specified.
+- [x] 9.2 Execute security acceptance tests for unknown chats/users, ambient group messages, tool allowlist expansion, disabled coding tools, malicious tool output, and secret redaction; verify every case fails closed as specified.
 - [x] 9.3 Execute restart acceptance tests during Telegram processing, agent completion, MCP execution, and response delivery; verify no restart causes duplicate agent/tool execution or duplicate successful responses.
 - [ ] 9.4 Document and perform a staged smoke-test checklist for the real Telegram bot and any reviewed generic MCP endpoint before household rollout; verify authorized DM/group behavior and enabled non-critical operations while unauthorized and unlisted operations remain inaccessible.

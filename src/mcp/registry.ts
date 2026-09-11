@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { McpServerConfig } from "../config.js";
 import type { ToolAuditRepository, ToolOutcome } from "../persistence/repositories.js";
-import { readSecret } from "../security/secrets.js";
+import { readSecret, SecretRedactor } from "../security/secrets.js";
 
 export type DiscoveredTool = {
   name: string;
@@ -78,7 +78,13 @@ export class McpRegistry {
     private readonly audits: ToolAuditRepository,
     private readonly factory: McpClientFactory = (config, token) =>
       Promise.resolve(new SdkMcpClient(new URL(config.url), token)),
+    private readonly redactor = new SecretRedactor(),
   ) {}
+
+  #safeDetail(error: unknown, fallback: string): string {
+    const detail = error instanceof Error ? error.message : fallback;
+    return String(this.redactor.redact(detail));
+  }
 
   async connect(): Promise<void> {
     for (const config of this.configs) {
@@ -87,7 +93,7 @@ export class McpRegistry {
       } catch (error) {
         this.#health.set(config.id, {
           status: "degraded",
-          detail: error instanceof Error ? error.message : "MCP connection failed",
+          detail: this.#safeDetail(error, "MCP connection failed"),
         });
       }
     }
@@ -132,7 +138,7 @@ export class McpRegistry {
       } catch (error) {
         this.#health.set(serverId, {
           status: "degraded",
-          detail: error instanceof Error ? error.message : "MCP reconnection failed",
+          detail: this.#safeDetail(error, "MCP reconnection failed"),
         });
         if (attempt + 1 < attempts) await sleeper(Math.min(5_000, 250 * 2 ** attempt));
       }
@@ -161,11 +167,11 @@ export class McpRegistry {
 
     const client = this.#clients.get(tool.server.id);
     if (!client) throw new Error(`MCP server unavailable: ${tool.server.id}`);
-    const auditId = this.audits.start(tool.server.id, tool.remoteName, args);
+    const auditId = this.audits.start(tool.server.id, tool.remoteName, this.redactor.redact(args));
     const timeout = AbortSignal.timeout(tool.server.timeoutMs);
     try {
       const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-      const result = await client.callTool(tool.remoteName, args, combined);
+      const result = this.redactor.redact(await client.callTool(tool.remoteName, args, combined));
       const serialized = JSON.stringify(result);
       const bounded =
         Buffer.byteLength(serialized) > tool.server.maxResultBytes
@@ -185,7 +191,7 @@ export class McpRegistry {
           ? "timeout"
           : "failure";
       this.audits.finish(auditId, outcome, {
-        error: error instanceof Error ? error.message : "MCP call failed",
+        error: this.#safeDetail(error, "MCP call failed"),
       });
       throw error;
     }

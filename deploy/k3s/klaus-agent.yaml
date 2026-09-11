@@ -1,0 +1,158 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: klaus-agent
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: klaus-agent-config
+  namespace: klaus-agent
+data:
+  config.yaml: |
+    telegram:
+      tokenFile: /run/secrets/telegram/token
+      allowedUsers: ["111111111", "222222222"]
+      allowedChats: ["111111111", "222222222", "-1003333333333"]
+      pollingTimeoutSeconds: 30
+    model:
+      provider: openai-codex
+      id: gpt-5.4
+      reasoning: medium
+      authPath: /var/lib/klaus-agent-auth/auth.json
+      contextTokens: 64000
+      retryLimit: 2
+    mcp:
+      - id: home
+        url: https://mcp.example.invalid/mcp
+        tokenFile: /run/secrets/home/token
+        tools: [get_state, call_service]
+        timeoutMs: 15000
+        maxResultBytes: 65536
+    skills:
+      paths: []
+    data:
+      directory: /var/lib/klaus-agent
+      retentionDays: 90
+    health:
+      host: 0.0.0.0
+      port: 8080
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: klaus-agent-data
+  namespace: klaus-agent
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: klaus-agent-auth
+  namespace: klaus-agent
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: klaus-agent
+  namespace: klaus-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: klaus-agent
+  template:
+    metadata:
+      labels:
+        app: klaus-agent
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: klaus-agent
+          image: ghcr.io/example/klaus-agent:1.0.0
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/klaus-agent/config.yaml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: health
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/klaus-agent
+              readOnly: true
+            - name: telegram-token
+              mountPath: /run/secrets/telegram
+              readOnly: true
+            - name: home-mcp-token
+              mountPath: /run/secrets/home
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/klaus-agent
+            - name: auth
+              mountPath: /var/lib/klaus-agent-auth
+      volumes:
+        - name: config
+          configMap:
+            name: klaus-agent-config
+        - name: telegram-token
+          secret:
+            secretName: klaus-agent-secrets
+            items:
+              - key: telegram-token
+                path: token
+        - name: home-mcp-token
+          secret:
+            secretName: klaus-agent-secrets
+            items:
+              - key: home-mcp-token
+                path: token
+        - name: data
+          persistentVolumeClaim:
+            claimName: klaus-agent-data
+        - name: auth
+          persistentVolumeClaim:
+            claimName: klaus-agent-auth

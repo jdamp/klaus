@@ -1,0 +1,39 @@
+telegram:
+  tokenFile: .local/secrets/telegram-token
+  allowedUsers:
+    - "111111111"
+    - "222222222"
+  allowedChats:
+    - "111111111"
+    - "222222222"
+    - "-1003333333333"
+  pollingTimeoutSeconds: 30
+
+model:
+  provider: openai-codex
+  id: gpt-5.4
+  reasoning: medium
+  authPath: .local/pi-auth/auth.json
+  contextTokens: 64000
+  retryLimit: 2
+
+mcp:
+  - id: home
+    url: https://mcp.example.invalid/mcp
+    tokenFile: .local/secrets/home-mcp-token
+    tools:
+      - get_state
+      - call_service
+    timeoutMs: 15000
+    maxResultBytes: 65536
+
+skills:
+  paths: []
+
+data:
+  directory: .local/data
+  retentionDays: 90
+
+health:
+  host: 127.0.0.1
+  port: 8080

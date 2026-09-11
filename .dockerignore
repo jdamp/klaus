@@ -1,0 +1,16 @@
+.git
+.agents
+.pi
+.local
+coverage
+dist
+node_modules
+openspec
+test
+*.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+auth.json
+models-store.json
+secrets
