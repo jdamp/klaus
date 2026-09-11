@@ -14,12 +14,12 @@
 
 ## 3. Telegram Admission and Dispatch
 
-- [ ] 3.1 Implement the Telegram long-polling adapter with required update types, bot identity discovery, offset management, and bounded shutdown; verify mocked polling resumes from the durable offset and does not require an inbound HTTP listener.
-- [ ] 3.2 Implement admission checks for bot/edited updates and the combined chat-plus-sender allowlists; verify unauthorized and automated message content is neither persisted nor dispatched.
-- [ ] 3.3 Implement entity-aware group trigger detection for bot mentions, replies to bot-authored messages, and supported commands; verify plain text resembling the bot name and ambient group messages are ignored.
-- [ ] 3.4 Normalize accepted private and group inputs and claim them in the durable inbox before processing; verify redelivery of the same Telegram update does not create another queued turn.
-- [ ] 3.5 Implement keyed per-chat dispatch queues that serialize one chat while allowing separate chats to progress concurrently; verify ordering and cross-chat concurrency with deterministic tests.
-- [ ] 3.6 Implement the new-session Telegram command scoped to the current authorized chat; verify it changes only that chat's active session and cannot be invoked from an unauthorized context.
+- [x] 3.1 Implement the Telegram long-polling adapter with required update types, bot identity discovery, offset management, and bounded shutdown; verify mocked polling resumes from the durable offset and does not require an inbound HTTP listener.
+- [x] 3.2 Implement admission checks for bot/edited updates and the combined chat-plus-sender allowlists; verify unauthorized and automated message content is neither persisted nor dispatched.
+- [x] 3.3 Implement entity-aware group trigger detection for bot mentions, replies to bot-authored messages, and supported commands; verify plain text resembling the bot name and ambient group messages are ignored.
+- [x] 3.4 Normalize accepted private and group inputs and claim them in the durable inbox before processing; verify redelivery of the same Telegram update does not create another queued turn.
+- [x] 3.5 Implement keyed per-chat dispatch queues that serialize one chat while allowing separate chats to progress concurrently; verify ordering and cross-chat concurrency with deterministic tests.
+- [x] 3.6 Implement the new-session Telegram command scoped to the current authorized chat; verify it changes only that chat's active session and cannot be invoked from an unauthorized context.
 
 ## 4. Headless Pi Conversation Runtime
 
@@ -42,9 +42,9 @@
 
 ## 6. Telegram Response Delivery
 
-- [ ] 6.1 Implement deterministic Telegram-safe rendering and ordered splitting of completed responses while preserving triggering-message reply metadata; verify boundary cases reconstruct the original response in order within platform limits.
-- [ ] 6.2 Implement the durable Telegram outbox worker with leasing, bounded retry/backoff, and successful-send recording; verify transient failures resume after restart without rerunning the agent.
-- [ ] 6.3 Connect finalized agent responses and operational error responses to the outbox; verify each accepted invocation targets only its originating chat.
+- [x] 6.1 Implement deterministic Telegram-safe rendering and ordered splitting of completed responses while preserving triggering-message reply metadata; verify boundary cases reconstruct the original response in order within platform limits.
+- [x] 6.2 Implement the durable Telegram outbox worker with leasing, bounded retry/backoff, and successful-send recording; verify transient failures resume after restart without rerunning the agent.
+- [x] 6.3 Connect finalized agent responses and operational error responses to the outbox; verify each accepted invocation targets only its originating chat.
 - [ ] 6.4 Add an end-to-end reactive test using fake Telegram, model, and MCP services; verify authorization, group triggers, tool execution, session persistence, reply delivery, and duplicate-update suppression as one flow.
 
 ## 7. Observability and Runtime Lifecycle

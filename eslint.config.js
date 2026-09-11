@@ -8,6 +8,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
+    files: ["**/*.ts"],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -17,6 +18,12 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
+    },
+  },
+  {
+    files: ["test/**/*.ts"],
+    rules: {
+      "@typescript-eslint/require-await": "off",
     },
   },
 );
