@@ -1,8 +1,8 @@
 ## 1. Project Foundation
 
-- [ ] 1.1 Initialize the TypeScript/Node.js package, pin Pi SDK and runtime dependencies, and add production/build scripts; verify dependency installation and a clean production build succeed.
-- [ ] 1.2 Configure formatting, linting, type checking, and the unit/integration test runner; verify each quality command succeeds on the initial scaffold.
-- [ ] 1.3 Create the modular application entry point and lifecycle interfaces for Telegram, sessions, capabilities, persistence, delivery, and health; verify a composition test can start and stop the service with fake adapters.
+- [x] 1.1 Initialize the TypeScript/Node.js package, pin Pi SDK and runtime dependencies, and add production/build scripts; verify dependency installation and a clean production build succeed.
+- [x] 1.2 Configure formatting, linting, type checking, and the unit/integration test runner; verify each quality command succeeds on the initial scaffold.
+- [x] 1.3 Create the modular application entry point and lifecycle interfaces for Telegram, sessions, capabilities, persistence, delivery, and health; verify a composition test can start and stop the service with fake adapters.
 
 ## 2. Configuration, Secrets, and Persistence
 

@@ -1,0 +1,6 @@
+openspec/
+.agents/
+.pi/
+node_modules/
+dist/
+coverage/
