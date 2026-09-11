@@ -92,6 +92,17 @@ export class UpdateRepository {
       )
       .run(state, failure ?? null, new Date().toISOString(), updateId);
   }
+
+  markInterruptedIndeterminate(): number {
+    const result = this.database.connection
+      .prepare(
+        `UPDATE telegram_updates
+         SET state='indeterminate',failure=?,completed_at=?
+         WHERE state='claimed'`,
+      )
+      .run("Interrupted before completion; automatic replay is disabled", new Date().toISOString());
+    return Number(result.changes);
+  }
 }
 
 export class SessionEntryRepository {

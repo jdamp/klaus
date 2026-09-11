@@ -30,4 +30,8 @@ export class SessionRegistry {
     for (const session of this.#cache.values()) session.dispose();
     this.#cache.clear();
   }
+
+  async abortAll(): Promise<void> {
+    await Promise.allSettled([...this.#cache.values()].map((session) => session.abort()));
+  }
 }

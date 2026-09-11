@@ -7,7 +7,12 @@ import type { ServiceComponent } from "../app/lifecycle.js";
 import type { AppConfig } from "../config.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import type { AppDatabase } from "../persistence/database.js";
-import { OutboxRepository, SessionEntryRepository } from "../persistence/repositories.js";
+import {
+  OutboxRepository,
+  SessionEntryRepository,
+  ToolAuditRepository,
+  UpdateRepository,
+} from "../persistence/repositories.js";
 import type { AcceptedTelegramInput } from "../telegram/types.js";
 import type { KeyedQueue } from "../dispatch/keyed-queue.js";
 import type { TelegramPoller } from "../telegram/poller.js";
@@ -39,6 +44,8 @@ export class PersistenceComponent implements ServiceComponent {
   constructor(private readonly database: AppDatabase) {}
   start(): Promise<void> {
     this.database.migrate();
+    new UpdateRepository(this.database).markInterruptedIndeterminate();
+    new ToolAuditRepository(this.database).markInterruptedIndeterminate();
     return Promise.resolve();
   }
   stop(): Promise<void> {
@@ -91,7 +98,7 @@ export class SessionComponent implements ServiceComponent {
     private readonly capabilities: McpRegistry,
   ) {}
 
-  start(): Promise<void> {
+  start(signal: AbortSignal): Promise<void> {
     const factory = new PiSessionFactory(
       this.config,
       this.runtime,
@@ -99,6 +106,7 @@ export class SessionComponent implements ServiceComponent {
       this.capabilities.piTools(),
     );
     this.#registry = new SessionRegistry(factory);
+    signal.addEventListener("abort", () => void this.#registry?.abortAll(), { once: true });
     this.#handler = new AgentTurnHandler(this.#registry, new OutboxRepository(this.database));
     return Promise.resolve();
   }
@@ -108,8 +116,8 @@ export class SessionComponent implements ServiceComponent {
     return this.#handler.handle(input, sessionId);
   }
 
-  stop(): Promise<void> {
+  async stop(): Promise<void> {
+    await this.#registry?.abortAll();
     this.#registry?.dispose();
-    return Promise.resolve();
   }
 }

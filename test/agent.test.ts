@@ -67,10 +67,14 @@ describe("Pi runtime adapter", () => {
 
   it("isolates and evicts cached chat sessions", async () => {
     const disposed: string[] = [];
+    const aborted: string[] = [];
     const factory = {
       async create(id: string) {
         return {
           session: {} as never,
+          abort: async () => {
+            aborted.push(id);
+          },
           persist() {},
           dispose() {
             disposed.push(id);
@@ -82,6 +86,8 @@ describe("Pi runtime adapter", () => {
     const one = await registry.get("one");
     expect(await registry.get("one")).toBe(one);
     await registry.get("two");
+    await registry.abortAll();
+    expect(aborted).toEqual(["two"]);
     expect(disposed).toEqual(["one"]);
     registry.dispose();
     expect(disposed).toEqual(["one", "two"]);

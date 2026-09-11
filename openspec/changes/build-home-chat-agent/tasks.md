@@ -51,7 +51,7 @@
 
 - [x] 7.1 Add structured, privacy-aware logging and correlation identifiers for updates, turns, tools, and deliveries; verify automated redaction tests contain no configured secrets or ignored message content.
 - [x] 7.2 Implement liveness, core readiness, and per-integration degraded health reporting; verify SQLite, provider authentication, or invalid core configuration blocks readiness while an optional MCP outage is reported as degraded.
-- [ ] 7.3 Implement bounded graceful shutdown across polling, dispatch queues, active Pi turns, MCP clients, outbox delivery, and SQLite; verify a termination integration test exits cleanly and leaves work in a deterministic recoverable or non-replay state.
+- [x] 7.3 Implement bounded graceful shutdown across polling, dispatch queues, active Pi turns, MCP clients, outbox delivery, and SQLite; verify a termination integration test exits cleanly and leaves work in a deterministic recoverable or non-replay state.
 - [x] 7.4 Add retention and maintenance operations for old accepted transcripts, tool audit metadata, completed updates, and deliveries; verify maintenance preserves active sessions, current summaries, pending work, and deduplication guarantees.
 
 ## 8. Packaging and Deployment
@@ -65,5 +65,5 @@
 
 - [ ] 9.1 Run the complete formatting, lint, type-check, unit, integration, and migration suites and verify all project quality gates pass from a clean checkout.
 - [ ] 9.2 Execute security acceptance tests for unknown chats/users, ambient group messages, tool allowlist expansion, disabled coding tools, malicious tool output, and secret redaction; verify every case fails closed as specified.
-- [ ] 9.3 Execute restart acceptance tests during Telegram processing, agent completion, MCP execution, and response delivery; verify no restart causes duplicate agent/tool execution or duplicate successful responses.
+- [x] 9.3 Execute restart acceptance tests during Telegram processing, agent completion, MCP execution, and response delivery; verify no restart causes duplicate agent/tool execution or duplicate successful responses.
 - [ ] 9.4 Document and perform a staged smoke-test checklist for the real Telegram bot and any reviewed generic MCP endpoint before household rollout; verify authorized DM/group behavior and enabled non-critical operations while unauthorized and unlisted operations remain inaccessible.

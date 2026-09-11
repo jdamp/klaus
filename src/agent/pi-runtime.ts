@@ -17,6 +17,7 @@ import type { SessionEntryRepository } from "../persistence/repositories.js";
 
 export type ManagedSession = {
   session: AgentSession;
+  abort(): Promise<void>;
   persist(): void;
   dispose(): void;
 };
@@ -109,6 +110,7 @@ export class PiSessionFactory {
 
     return {
       session,
+      abort: () => session.abort(),
       persist: () => this.entries.replace(sessionId, session.sessionManager.getEntries()),
       dispose: () => session.dispose(),
     };

@@ -16,7 +16,10 @@ export class Application {
   #started: ServiceComponent[] = [];
   #stopping?: Promise<void>;
 
-  constructor(components: readonly ServiceComponent[]) {
+  constructor(
+    components: readonly ServiceComponent[],
+    private readonly shutdownTimeoutMs = 30_000,
+  ) {
     const names = new Set<string>();
     for (const component of components) {
       if (names.has(component.name)) {
@@ -55,10 +58,21 @@ export class Application {
   async #stopOnce(): Promise<void> {
     this.#controller.abort();
     const errors: unknown[] = [];
+    const deadline = Date.now() + this.shutdownTimeoutMs;
 
     for (const component of this.#started.reverse()) {
       try {
-        await component.stop();
+        const remaining = Math.max(1, deadline - Date.now());
+        await Promise.race([
+          component.stop(),
+          new Promise<never>((_, reject) => {
+            const timer = setTimeout(
+              () => reject(new Error(`Timed out stopping component: ${component.name}`)),
+              remaining,
+            );
+            timer.unref();
+          }),
+        ]);
       } catch (error) {
         errors.push(error);
       }
