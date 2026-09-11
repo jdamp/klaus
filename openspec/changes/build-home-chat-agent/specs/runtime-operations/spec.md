@@ -1,6 +1,6 @@
 ## Purpose
 
-Define a secure and observable runtime contract for operating the home agent as a small single-instance service in either a homelab VM or a k3s workload.
+Define a secure and observable runtime contract for running the home agent locally and operating it as a small single-instance k3s workload.
 
 ## ADDED Requirements
 
@@ -23,14 +23,25 @@ The system SHALL store SQLite state and other durable application data in a conf
 
 #### Scenario: Container is recreated
 - **WHEN** the replacement instance mounts the existing persistent data location
-- **THEN** conversation sessions, delivery state, reminder state, and audit metadata remain available
+- **THEN** conversation sessions, delivery state, tool audit metadata, and Pi provider authentication state remain available
 
 ### Requirement: Secrets are externally supplied and redacted
-The system SHALL obtain Telegram, model-provider, MCP, and Home Assistant credentials from mounted secrets or an equivalently protected runtime source. Secret values MUST NOT appear in logs, prompts, conversational storage, or health responses.
+The system SHALL obtain Telegram and MCP credentials from mounted secrets or an equivalently protected runtime source. Pi-managed provider credentials SHALL use a protected, writable, persistent authentication location separate from conversation storage. Secret values MUST NOT appear in logs, prompts, conversational storage, or health responses.
 
 #### Scenario: Operator inspects diagnostic output
 - **WHEN** logs and health information are produced during authenticated service calls
 - **THEN** credential values and authorization headers are absent or redacted
+
+### Requirement: Pi manages model-provider authentication
+The system SHALL use Pi's model runtime for provider authentication and SHALL allow provider, model, reasoning level, and authentication location to be configured. Subscription-backed OAuth and API-key-based providers SHALL be supported without application-specific provider credential parsing.
+
+#### Scenario: Subscription credential is refreshed
+- **WHEN** Pi refreshes an expiring subscription-backed provider credential
+- **THEN** the refreshed state is written to the configured persistent authentication location and remains usable after restart
+
+#### Scenario: Provider settings change
+- **WHEN** an operator selects another Pi-supported provider, model, or reasoning level with valid credentials
+- **THEN** the service uses those settings without requiring a code change
 
 ### Requirement: Security-critical configuration fails closed
 The system SHALL refuse to process chat messages when required identity allowlists, Telegram credentials, or capability policy are missing or invalid. An optional downstream integration failure SHALL degrade only that integration.
@@ -46,9 +57,9 @@ The system SHALL refuse to process chat messages when required identity allowlis
 ### Requirement: Health and diagnostics distinguish service states
 The system SHALL expose liveness and readiness information that distinguishes core readiness from degraded optional dependencies without disclosing secrets or private message content.
 
-#### Scenario: Telegram and storage are ready but Home Assistant is unavailable
+#### Scenario: Telegram and storage are ready but an MCP server is unavailable
 - **WHEN** an operator checks service health
-- **THEN** the response reports the core service as operating and the Home Assistant integration as degraded
+- **THEN** the response reports the core service as operating and the affected MCP integration as degraded
 
 ### Requirement: Shutdown preserves processing integrity
 The system SHALL stop accepting new work, settle or safely cancel active work, durably record relevant state, close external connections, and release the Telegram consumer during graceful shutdown.
@@ -57,9 +68,13 @@ The system SHALL stop accepting new work, settle or safely cancel active work, d
 - **WHEN** the service receives a supported termination signal
 - **THEN** it performs bounded graceful shutdown without silently losing a confirmed delivery or leaving an update eligible for duplicate action
 
-### Requirement: Deployment targets share one application artifact
-The system SHALL provide a containerized application artifact configurable for operation either under a VM service manager or as a single-replica k3s workload.
+### Requirement: Local and k3s runtimes share one application artifact
+The system SHALL provide one application artifact that can run directly for local development and as a single-replica containerized k3s workload.
 
-#### Scenario: Operator selects a deployment environment
-- **WHEN** the same application image is configured with the environment's secrets, persistent data location, and network endpoints
-- **THEN** it provides equivalent chat and agent behavior in the VM and k3s targets
+#### Scenario: Developer runs the service locally
+- **WHEN** the application is started locally with valid configuration, protected credentials, and writable temporary storage
+- **THEN** it provides the same chat, conversation, and capability behavior as the packaged runtime
+
+#### Scenario: Operator deploys to k3s
+- **WHEN** the application image is configured with mounted secrets, persistent application and Pi-authentication storage, and required network endpoints
+- **THEN** it operates as one active Telegram consumer with equivalent behavior

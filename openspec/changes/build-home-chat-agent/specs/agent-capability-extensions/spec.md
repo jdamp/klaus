@@ -36,8 +36,8 @@ The system SHALL support custom tools with named operations, documented input sc
 ### Requirement: Authenticated Streamable HTTP MCP servers are supported
 The system SHALL connect to configured MCP servers over Streamable HTTP using credentials supplied outside model context and persistent conversation data. It SHALL discover server tools and namespace them by server identity to prevent collisions.
 
-#### Scenario: Home Assistant MCP connection succeeds
-- **WHEN** the configured Home Assistant MCP endpoint accepts the mounted token and reports its tool catalogue
+#### Scenario: Configured MCP connection succeeds
+- **WHEN** a configured Streamable HTTP MCP endpoint accepts its mounted token and reports its tool catalogue
 - **THEN** enabled tools are made available under collision-resistant names associated with that server
 
 #### Scenario: MCP credential is handled
@@ -65,7 +65,7 @@ The system SHALL validate tool arguments against discovered schemas, propagate c
 ### Requirement: Optional capability outages are isolated
 The system SHALL continue serving capabilities that remain healthy when an optional MCP server is unavailable, and SHALL make the unavailability observable to both users attempting affected operations and service operators.
 
-#### Scenario: Home Assistant MCP server is offline
-- **WHEN** a user asks for an operation requiring the unavailable Home Assistant MCP server
+#### Scenario: Configured MCP server is offline
+- **WHEN** a user asks for an operation requiring an unavailable configured MCP server
 - **THEN** the bot reports that the capability is unavailable without disrupting unrelated conversations or services
 

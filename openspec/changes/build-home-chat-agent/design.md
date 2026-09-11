@@ -2,7 +2,7 @@
 
 This is a greenfield service; the repository currently contains no application code or durable capability specs. See `proposal.md` for motivation and the change specs for behavioral contracts.
 
-The installation serves two adults initially, with possible future children, through a small set of explicitly allowlisted Telegram private chats and family groups. The first home integration is an already deployed Home Assistant MCP server exposed over authenticated Streamable HTTP. Device scope is limited to non-critical household services such as lights, a vacuum, desk height, and shopping lists. Calendar reminders are expected later, with Home Assistant acting as the likely aggregation point for a shared Google Calendar. The runtime must fit either a VM or a single-replica k3s deployment.
+The installation serves two adults initially, with possible future children, through a small set of explicitly allowlisted Telegram private chats and family groups. The first configured home integration is an already deployed third-party Home Assistant MCP server exposed over authenticated Streamable HTTP, but the application treats it as a generic MCP endpoint so a built-in or different server can replace it through configuration. Device scope is limited to non-critical household services such as lights, a vacuum, desk height, and shopping lists. Development runs locally; the production target is a single-replica k3s deployment. Calendar-derived notifications are deferred to a later change.
 
 ## Goals / Non-Goals
 
@@ -10,7 +10,7 @@ The installation serves two adults initially, with possible future children, thr
 
 - Keep authorization, capability policy, persistence, and delivery reliability outside model judgment.
 - Reuse Pi's headless session, compaction, resource loading, model runtime, and tool APIs without running its TUI.
-- Make Telegram, MCP, persistence, calendar sourcing, and delivery replaceable behind narrow application interfaces.
+- Make Telegram, MCP, persistence, and delivery replaceable behind narrow application interfaces.
 - Use one operationally simple process and one persistent data store for the initial household scale.
 - Preserve a path from generic MCP operations to specialized native tools without changing chat/session architecture.
 
@@ -21,13 +21,13 @@ The installation serves two adults initially, with possible future children, thr
 - Control locks, alarms, garage doors, or other security-critical infrastructure.
 - Let the model create executable skills, modify authorization policy, or access raw credentials.
 - Implement general workflow orchestration, multiple active replicas, or a distributed message broker.
-- Make Home Assistant or this service the source of truth for personal calendar data.
+- Implement scheduled or event-driven notifications in this first change.
 
 ## Decisions
 
 ### 1. Build a TypeScript modular monolith
 
-The application will ship as one Node.js container with internal modules for configuration, Telegram transport, admission policy, session coordination, Pi runtime integration, skills, MCP clients, persistence, calendar synchronization, scheduling, delivery, auditing, and health.
+The application will ship as one Node.js container with internal modules for configuration, Telegram transport, admission policy, session coordination, Pi runtime integration, skills, MCP clients, persistence, delivery, auditing, and health.
 
 ```text
 Telegram long poll --> admission --> durable inbox --> per-chat coordinator
@@ -37,12 +37,11 @@ Telegram long poll --> admission --> durable inbox --> per-chat coordinator
                                                         |
                                            policy --> tools/MCP
 
-Home Assistant calendar --> synchronization --> reminder scheduler
-                                                   |
-                                                   v
-                                             Telegram outbox
+                                                        |
+                                                        v
+                                                Telegram outbox
 
-All durable application flows ------------------> SQLite
+Durable application flows ---------------------> SQLite
 ```
 
 This is preferred over microservices because the expected concurrency and availability requirements do not justify a broker, distributed transactions, or independent scaling. Module boundaries and durable job records preserve a later extraction path.
@@ -50,6 +49,10 @@ This is preferred over microservices because the expected concurrency and availa
 ### 2. Embed the Pi coding-agent SDK headlessly
 
 Use `@earendil-works/pi-coding-agent` programmatically to create `AgentSession` instances, configure the model runtime, load skills, compact context, register custom tools, and consume agent events. Instantiate sessions with all built-in coding tools disabled and only explicitly selected application/MCP tools supplied.
+
+Provider, model, and reasoning settings are validated application configuration. The initial deployment uses Pi's `openai-codex` provider with subscription-backed OAuth, but the code does not hard-code that provider and can also use Pi-supported API-key providers. Authentication is bootstrapped separately from the long-running bot through Pi's provider login flow.
+
+The Pi model runtime uses a configurable authentication path on protected writable persistent storage. This state is separate from SQLite because Pi owns its format and must update refresh credentials atomically. Telegram and MCP secrets remain external read-only secret files. OAuth values are never copied into prompts, application records, or diagnostic output.
 
 The application will use an in-memory Pi `SessionManager` hydrated with session entries read from SQLite. Finalized Pi entries and compaction state will be persisted back to SQLite at controlled turn boundaries. This preserves SQLite as the application source of truth while using the SDK's agent lifecycle. A small Pi adapter will isolate SDK-specific entry conversion and version changes.
 
@@ -82,9 +85,6 @@ Use the runtime-provided SQLite implementation in WAL mode, with migrations appl
 - `session_entries`: ordered Pi-native conversation and compaction entries per session.
 - `tool_executions`: tool identity, redacted arguments, status, timing, and bounded outcome metadata.
 - `outbox_messages`: destination, reply reference, ordered content chunks, attempt state, and Telegram result identifiers.
-- `calendar_events`: minimal normalized event data and source revision information.
-- `reminder_rules`: operator-configured matching and delivery behavior.
-- `reminder_occurrences`: calculated schedule, deduplication identity, status, and outbox association.
 
 An accepted update, its processing transition, resulting session entries, and outgoing response intent are committed at explicit boundaries. Telegram sending occurs from the outbox and records success separately, allowing retries without rerunning the agent. Exact once-only side effects cannot be guaranteed across an external MCP call and a process crash; the durable `started` tool record and no-replay rule minimize duplicate actions and make ambiguous outcomes visible.
 
@@ -98,65 +98,48 @@ Executable authority comes only from the tool registry. Every tool is registered
 
 ### 6. Adapt MCP tools through a managed client registry
 
-Represent each MCP server with a stable configuration identifier, Streamable HTTP URL, secret reference, tool allowlist, timeouts, and result limits. One managed client per configured server performs connection lifecycle and tool discovery. Discovered names are exposed as namespaced Pi tools such as `home_assistant__get_state`.
+Represent each MCP server with a stable configuration identifier, Streamable HTTP URL, optional token secret reference, tool allowlist, timeouts, and result limits. One managed client per configured server performs connection lifecycle and tool discovery. Discovered names are exposed as namespaced Pi tools such as `home__get_state`.
 
-The Home Assistant token is read from a mounted secret and attached only at the MCP transport boundary. It is never inserted into prompts, tool parameters, SQLite, health output, or logs. Redirect behavior must not forward credentials to an unconfigured origin.
+Each MCP token is read from a mounted secret and attached only at that server's transport boundary. It is never inserted into prompts, tool parameters, SQLite, health output, or logs. Redirect behavior must not forward credentials to an unconfigured origin.
 
 Tool discovery is fail-closed: an unknown or renamed tool is reported diagnostically but remains unavailable. Calls are schema-validated, cancellable where supported, timed out, size-bounded, and audited. MCP unavailability degrades only dependent operations. Later native tools may coexist under stable application names; the corresponding broad MCP operation can then be removed from the allowlist.
 
-### 7. Separate deterministic reminders from agent conversations
+### 7. Keep configuration, secrets, and mutable state separate
 
-Define a `CalendarSource` boundary that returns normalized events for a requested time window. The first planned adapter reads configured Home Assistant calendar entities using a separate read-only Home Assistant API credential; it does not assume that the MCP server token grants native Home Assistant API access.
+Use validated startup configuration for immutable or operator-controlled settings: allowlisted decimal-string user/chat IDs, model provider/model/reasoning selection, MCP server definitions, tool allowlists, skill directories, and operational limits.
 
-Synchronization runs at startup and periodically over a rolling horizon. Reconciliation uses source identity, event identity or a deterministic fallback fingerprint, occurrence time, and revision data to update or cancel unsent reminders. Reminder rules match normalized event fields and produce durable occurrences in the household IANA timezone.
+Service secret configuration accepts file references so Kubernetes Secrets or protected local files can be used without copying values into the main configuration. SQLite lives under a configurable persistent data directory; Pi authentication state uses a separately configurable protected writable path. Invalid admission, provider-authentication, or tool-policy configuration prevents polling; unavailable optional MCP services produce degraded health.
 
-The scheduler leases due occurrences and creates Telegram outbox messages directly. It does not create a Pi session or send calendar data to an LLM. Home Assistant calendar configuration, the Google Calendar connection, exact entity IDs, polling interval, and reminder patterns remain deployment configuration.
-
-Using Home Assistant as the aggregation boundary is preferred over direct Google OAuth because it avoids another credential lifecycle and allows other Home Assistant calendar integrations to use the same adapter. Calling a calendar MCP tool on a timer was rejected because deterministic background synchronization should not depend on model-oriented tool discovery.
-
-### 8. Keep configuration, secrets, and mutable state separate
-
-Use validated startup configuration for immutable or operator-controlled settings: allowlisted decimal-string user/chat IDs, model selection, MCP server definitions, tool allowlists, skill directories, calendar entities, reminder rules, household timezone, and operational limits.
-
-Secret configuration accepts file references so Kubernetes Secrets, systemd credentials, or protected VM-mounted files can be used without copying values into the main configuration. SQLite and any generated runtime files live under one configurable persistent data directory. Invalid admission or tool-policy configuration prevents polling; unavailable optional services produce degraded health.
-
-### 9. Use final-response delivery with durable chunking initially
+### 8. Use final-response delivery with durable chunking initially
 
 The Telegram adapter will enqueue a completed assistant response rather than continuously editing a streaming preview. It preserves the triggering message as a reply reference and splits oversized output at safe textual boundaries into ordered outbox records.
 
 Final-only delivery is preferred initially because it is simpler to retry and avoids Telegram edit-rate behavior. Pi events remain available internally, so edit-in-place streaming can be added later without changing conversation or tool execution.
 
-### 10. Operate one non-root instance with explicit lifecycle states
+### 9. Operate one non-root instance with explicit lifecycle states
 
-The container runs as a non-root user, mounts one writable data volume and read-only configuration/secret/skill locations, and receives only necessary outbound network access. k3s uses a one-replica replacement strategy that prevents overlapping long pollers; VM deployment uses the same image under a service manager.
+The container runs as a non-root user, mounts writable application-data and Pi-authentication paths plus read-only configuration/secret/skill locations, and receives only necessary outbound network access. k3s uses a one-replica replacement strategy that prevents overlapping long pollers. Local execution uses the same validated configuration model for development and tests.
 
-Liveness indicates that the process and event loop operate. Readiness requires valid core configuration, SQLite, and Telegram initialization. Optional integrations have independent healthy/degraded status. Shutdown first stops polling and scheduler leases, then drains or cancels bounded work, closes Pi/MCP/Telegram resources, checkpoints state, and exits within the platform grace period.
+Liveness indicates that the process and event loop operate. Readiness requires valid core configuration, provider authentication, SQLite, and Telegram initialization. Optional integrations have independent healthy/degraded status. Shutdown first stops polling, then drains or safely cancels bounded work, closes Pi/MCP/Telegram resources, checkpoints state, and exits within the platform grace period.
 
 ## Risks / Trade-offs
 
 - **Pi SDK APIs and session entry formats may evolve** -> Pin exact Pi package versions, isolate them behind an adapter, and maintain restore/compaction contract tests before upgrades.
-- **A broad Home Assistant MCP tool may permit more arguments than intended** -> Enable tools individually, review discovered schemas, keep audit records, and replace commonly used broad operations with constrained native tools as usage becomes clear.
+- **A broad MCP tool may permit more arguments than intended** -> Enable tools individually, review discovered schemas, keep audit records, and replace commonly used broad operations with constrained native tools as usage becomes clear.
+- **Subscription OAuth requires mutable credential state** -> Bootstrap it separately, mount a dedicated writable persistent path with restrictive permissions, test refresh persistence, and retain API-key provider support as a fallback.
 - **An external side effect and local commit cannot be atomic** -> Mark work and tool calls durably before execution, never replay ambiguous updates automatically, and report indeterminate outcomes instead of claiming success.
 - **Prompt injection can arrive through chat or tool results** -> Keep admission and tool authorization outside prompts, bound tool results, disable generic shell/filesystem/HTTP tools, and treat external content as untrusted data.
 - **SQLite and one replica limit horizontal scaling** -> Accept this for household load; preserve queues and adapters so a later database/broker migration does not change capability behavior.
-- **Calendar synchronization may miss a last-minute change during an outage** -> Cache future occurrences, refresh periodically and at startup, expose source health, and use a misfire grace policy.
 - **Persisted family conversations carry privacy risk** -> Store only triggered content, isolate sessions by chat, redact credentials, protect and back up the data volume, and keep model context bounded.
 - **Final-only Telegram responses feel less interactive** -> Prefer reliable delivery initially and retain Pi event plumbing for a later streamed-preview enhancement.
 
 ## Migration Plan
 
-1. Build and test the service with an isolated Telegram test bot, temporary SQLite database, in-memory/fake MCP server, and fake calendar source.
-2. Configure the real Telegram bot, allowlisted user/chat IDs, model credential, Home Assistant MCP URL/token, and an explicit initial tool allowlist in a staging deployment.
+1. Build and test the service locally with an isolated Telegram test bot, temporary SQLite database, fake model runtime, and fake Streamable HTTP MCP server.
+2. Bootstrap Pi provider authentication, then configure the real Telegram bot, allowlisted user/chat IDs, provider/model/reasoning selection, MCP URL/token references, and explicit per-server tool allowlists in a staging deployment.
 3. Verify private-chat and group trigger behavior, restart recovery, context isolation, MCP failure handling, and outbox deduplication before enabling household use.
-4. Deploy the same pinned container image to either the selected VM or a single-replica k3s workload with persistent storage, backups, and restricted secrets/network policy.
-5. Add the Home Assistant calendar credential, calendar entity, and reminder rules only after the core chat/MCP path is stable.
+4. Deploy the pinned image as a single-replica k3s workload with persistent application and Pi-authentication storage, backups, restricted secrets, and network policy.
 
 Rollback uses the previously pinned image and compatible configuration. Database migrations must be forward-safe and backed up before deployment; migrations that cannot be read by the previous image require a documented restore-from-backup rollback rather than an in-place downgrade.
 
-## Open Questions
-
-- Which model provider, model, and thinking level will be the initial deployment default?
-- Which Home Assistant MCP tools will be included in the first reviewed allowlist?
-- Which VM or k3s target will host the first production deployment?
-- What Home Assistant calendar entity, event matching patterns, reminder offsets, and household timezone will be configured when reminders are enabled?
-- Which shopping-list service will be integrated first, and will it arrive through MCP or a later native tool?
+Exact model, reasoning level, MCP endpoint definitions, and reviewed tool allowlists remain deployment configuration rather than implementation-blocking design choices. Calendar reminders and specialized shopping-list tooling are intentionally deferred to later changes.
