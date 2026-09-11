@@ -6,11 +6,11 @@
 
 ## 2. Configuration, Secrets, and Persistence
 
-- [ ] 2.1 Implement validated operator configuration for decimal-string Telegram IDs, provider/model/reasoning selection, Pi authentication path, MCP definitions and tool allowlists, skill paths, limits, and data paths; verify valid fixtures load and security-critical omissions prevent startup.
-- [ ] 2.2 Implement file-backed service secret references and centralized redaction utilities; verify Telegram and MCP credential fixtures never appear in serialized config, logs, errors, or health output.
-- [ ] 2.3 Add SQLite initialization in WAL mode with versioned migrations for chats, Telegram updates, session entries, tool executions, and outbox messages; verify a fresh database reaches the expected schema and repeated migration is safe.
-- [ ] 2.4 Implement repositories and transactions for chats, Telegram update claiming, and ordered Pi session entries; verify uniqueness constraints prevent duplicate update claims and preserve deterministic session entry order.
-- [ ] 2.5 Implement repositories for tool audits and outbox delivery; verify lease, retry, completion, cancellation, and deduplication transitions with repository tests.
+- [x] 2.1 Implement validated operator configuration for decimal-string Telegram IDs, provider/model/reasoning selection, Pi authentication path, MCP definitions and tool allowlists, skill paths, limits, and data paths; verify valid fixtures load and security-critical omissions prevent startup.
+- [x] 2.2 Implement file-backed service secret references and centralized redaction utilities; verify Telegram and MCP credential fixtures never appear in serialized config, logs, errors, or health output.
+- [x] 2.3 Add SQLite initialization in WAL mode with versioned migrations for chats, Telegram updates, session entries, tool executions, and outbox messages; verify a fresh database reaches the expected schema and repeated migration is safe.
+- [x] 2.4 Implement repositories and transactions for chats, Telegram update claiming, and ordered Pi session entries; verify uniqueness constraints prevent duplicate update claims and preserve deterministic session entry order.
+- [x] 2.5 Implement repositories for tool audits and outbox delivery; verify lease, retry, completion, cancellation, and deduplication transitions with repository tests.
 
 ## 3. Telegram Admission and Dispatch
 
