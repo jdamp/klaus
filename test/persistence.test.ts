@@ -111,12 +111,23 @@ describe("SQLite persistence", () => {
     outbox.cancel("cancel");
     expect(outbox.lease(now, 1_000)).toBeUndefined();
 
-    const auditId = audits.start("home", "light", { token: "[REDACTED]" });
-    audits.finish(auditId, "success", { ok: true });
+    const outcomes = ["success", "failure", "timeout", "cancelled"] as const;
+    for (const outcome of outcomes) {
+      const auditId = audits.start("home", "light", { token: "[REDACTED]" });
+      audits.finish(auditId, outcome, { ok: outcome === "success" });
+    }
+    const interrupted = audits.start("home", "vacuum", {});
+    expect(audits.markInterruptedIndeterminate()).toBe(1);
+    const rows = database.connection
+      .prepare("SELECT status FROM tool_executions ORDER BY status")
+      .all() as Array<{ status: string }>;
+    expect(rows.map((row) => row.status).sort()).toEqual(
+      ["success", "failure", "timeout", "cancelled", "indeterminate"].sort(),
+    );
     const row = database.connection
       .prepare("SELECT status FROM tool_executions WHERE id=?")
-      .get(auditId) as { status: string };
-    expect(row.status).toBe("success");
+      .get(interrupted) as { status: string };
+    expect(row.status).toBe("indeterminate");
     database.close();
   });
 });

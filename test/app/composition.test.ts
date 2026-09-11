@@ -37,16 +37,16 @@ describe("application composition", () => {
 
     expect(events).toEqual([
       "start:persistence",
-      "start:sessions",
       "start:capabilities",
+      "start:sessions",
       "start:delivery",
       "start:telegram",
       "start:health",
       "stop:health",
       "stop:telegram",
       "stop:delivery",
-      "stop:capabilities",
       "stop:sessions",
+      "stop:capabilities",
       "stop:persistence",
     ]);
   });
@@ -70,6 +70,12 @@ describe("application composition", () => {
 
     const application = composeApplication(services);
     await expect(application.start()).rejects.toThrow("boom");
-    expect(events).toEqual(["start:persistence", "start:sessions", "stop:persistence"]);
+    expect(events).toEqual([
+      "start:persistence",
+      "start:capabilities",
+      "start:sessions",
+      "stop:capabilities",
+      "stop:persistence",
+    ]);
   });
 });

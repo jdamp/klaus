@@ -27,7 +27,7 @@
 - [x] 4.2 Implement SQLite-to-`SessionManager.inMemory` hydration and persistence of Pi session and compaction entries at turn boundaries; verify a multi-turn session restored after restart has equivalent usable context.
 - [x] 4.3 Implement the chat-to-session registry and bounded in-memory session cache with disposal; verify private and group chats restore distinct sessions without cross-chat messages.
 - [x] 4.4 Configure Pi model runtime, system instructions, retry limits, context budget, and automatic compaction through validated application settings; verify a long synthetic conversation compacts older entries while retaining the recent structured tool-call/result tail.
-- [ ] 4.5 Implement Pi-managed provider authentication with a configurable writable auth path and a separate bootstrap command; verify refreshed OAuth state survives restart and API-key providers require no application-specific credential parsing.
+- [x] 4.5 Implement Pi-managed provider authentication with a configurable writable auth path and a separate bootstrap command; verify refreshed OAuth state survives restart and API-key providers require no application-specific credential parsing.
 - [x] 4.6 Configure Pi resource loading for read-only operator skill paths and explicit reload, with model-driven installation disabled; verify valid skills are discoverable and an invalid skill produces diagnostics without expanding tool authority.
 - [x] 4.7 Translate accepted Telegram inputs into Pi prompts and finalized Pi events into durable response intents; verify agent failures produce a safe user-facing response without recording a successful turn or action.
 
@@ -45,14 +45,14 @@
 - [x] 6.1 Implement deterministic Telegram-safe rendering and ordered splitting of completed responses while preserving triggering-message reply metadata; verify boundary cases reconstruct the original response in order within platform limits.
 - [x] 6.2 Implement the durable Telegram outbox worker with leasing, bounded retry/backoff, and successful-send recording; verify transient failures resume after restart without rerunning the agent.
 - [x] 6.3 Connect finalized agent responses and operational error responses to the outbox; verify each accepted invocation targets only its originating chat.
-- [ ] 6.4 Add an end-to-end reactive test using fake Telegram, model, and MCP services; verify authorization, group triggers, tool execution, session persistence, reply delivery, and duplicate-update suppression as one flow.
+- [x] 6.4 Add an end-to-end reactive test using fake Telegram, model, and MCP services; verify authorization, group triggers, tool execution, session persistence, reply delivery, and duplicate-update suppression as one flow.
 
 ## 7. Observability and Runtime Lifecycle
 
-- [ ] 7.1 Add structured, privacy-aware logging and correlation identifiers for updates, turns, tools, and deliveries; verify automated redaction tests contain no configured secrets or ignored message content.
-- [ ] 7.2 Implement liveness, core readiness, and per-integration degraded health reporting; verify SQLite, provider authentication, or invalid core configuration blocks readiness while an optional MCP outage is reported as degraded.
+- [x] 7.1 Add structured, privacy-aware logging and correlation identifiers for updates, turns, tools, and deliveries; verify automated redaction tests contain no configured secrets or ignored message content.
+- [x] 7.2 Implement liveness, core readiness, and per-integration degraded health reporting; verify SQLite, provider authentication, or invalid core configuration blocks readiness while an optional MCP outage is reported as degraded.
 - [ ] 7.3 Implement bounded graceful shutdown across polling, dispatch queues, active Pi turns, MCP clients, outbox delivery, and SQLite; verify a termination integration test exits cleanly and leaves work in a deterministic recoverable or non-replay state.
-- [ ] 7.4 Add retention and maintenance operations for old accepted transcripts, tool audit metadata, completed updates, and deliveries; verify maintenance preserves active sessions, current summaries, pending work, and deduplication guarantees.
+- [x] 7.4 Add retention and maintenance operations for old accepted transcripts, tool audit metadata, completed updates, and deliveries; verify maintenance preserves active sessions, current summaries, pending work, and deduplication guarantees.
 
 ## 8. Packaging and Deployment
 
