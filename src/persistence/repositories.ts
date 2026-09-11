@@ -160,6 +160,15 @@ export class ToolAuditRepository {
         id,
       );
   }
+
+  markInterruptedIndeterminate(): number {
+    const result = this.database.connection
+      .prepare(
+        "UPDATE tool_executions SET status='indeterminate',finished_at=? WHERE status='started'",
+      )
+      .run(new Date().toISOString());
+    return Number(result.changes);
+  }
 }
 
 export type OutboxDraft = {

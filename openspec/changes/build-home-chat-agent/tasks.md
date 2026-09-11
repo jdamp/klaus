@@ -23,22 +23,22 @@
 
 ## 4. Headless Pi Conversation Runtime
 
-- [ ] 4.1 Implement a Pi SDK adapter that creates headless `AgentSession` instances with all built-in coding tools disabled and only supplied application tools enabled; verify shell, read, write, edit, and generic HTTP capabilities are absent from agent state.
-- [ ] 4.2 Implement SQLite-to-`SessionManager.inMemory` hydration and persistence of Pi session and compaction entries at turn boundaries; verify a multi-turn session restored after restart has equivalent usable context.
-- [ ] 4.3 Implement the chat-to-session registry and bounded in-memory session cache with disposal; verify private and group chats restore distinct sessions without cross-chat messages.
-- [ ] 4.4 Configure Pi model runtime, system instructions, retry limits, context budget, and automatic compaction through validated application settings; verify a long synthetic conversation compacts older entries while retaining the recent structured tool-call/result tail.
+- [x] 4.1 Implement a Pi SDK adapter that creates headless `AgentSession` instances with all built-in coding tools disabled and only supplied application tools enabled; verify shell, read, write, edit, and generic HTTP capabilities are absent from agent state.
+- [x] 4.2 Implement SQLite-to-`SessionManager.inMemory` hydration and persistence of Pi session and compaction entries at turn boundaries; verify a multi-turn session restored after restart has equivalent usable context.
+- [x] 4.3 Implement the chat-to-session registry and bounded in-memory session cache with disposal; verify private and group chats restore distinct sessions without cross-chat messages.
+- [x] 4.4 Configure Pi model runtime, system instructions, retry limits, context budget, and automatic compaction through validated application settings; verify a long synthetic conversation compacts older entries while retaining the recent structured tool-call/result tail.
 - [ ] 4.5 Implement Pi-managed provider authentication with a configurable writable auth path and a separate bootstrap command; verify refreshed OAuth state survives restart and API-key providers require no application-specific credential parsing.
-- [ ] 4.6 Configure Pi resource loading for read-only operator skill paths and explicit reload, with model-driven installation disabled; verify valid skills are discoverable and an invalid skill produces diagnostics without expanding tool authority.
-- [ ] 4.7 Translate accepted Telegram inputs into Pi prompts and finalized Pi events into durable response intents; verify agent failures produce a safe user-facing response without recording a successful turn or action.
+- [x] 4.6 Configure Pi resource loading for read-only operator skill paths and explicit reload, with model-driven installation disabled; verify valid skills are discoverable and an invalid skill produces diagnostics without expanding tool authority.
+- [x] 4.7 Translate accepted Telegram inputs into Pi prompts and finalized Pi events into durable response intents; verify agent failures produce a safe user-facing response without recording a successful turn or action.
 
 ## 5. MCP and Tool Policy
 
-- [ ] 5.1 Implement the managed Streamable HTTP MCP client lifecycle with URL validation, mounted-token authentication, safe redirect behavior, and a fake MCP server test proving credentials remain transport-only.
-- [ ] 5.2 Implement startup/reconnect tool discovery, stable server namespaces, and fail-closed per-server allowlists; verify duplicate names do not collide and newly discovered unlisted tools remain absent from Pi sessions.
-- [ ] 5.3 Adapt enabled MCP schemas and calls into Pi tools with local argument validation, cancellation propagation, timeouts, and result-size truncation; verify invalid, cancelled, timed-out, oversized, and successful fake calls produce the expected structured results.
-- [ ] 5.4 Add application-level tool execution hooks and redacted audit transitions recorded before and after calls; verify audits distinguish success, failure, timeout, cancellation, and indeterminate interruption without storing credentials.
-- [ ] 5.5 Implement MCP connection health, bounded reconnection backoff, and unavailable-capability responses; verify an MCP outage leaves Telegram and unrelated agent conversations operational in degraded mode.
-- [ ] 5.6 Add a generic configurable MCP integration fixture representing non-critical household operations; verify only its reviewed fixture allowlist is exposed to the model and no Home Assistant-specific adapter exists.
+- [x] 5.1 Implement the managed Streamable HTTP MCP client lifecycle with URL validation, mounted-token authentication, safe redirect behavior, and a fake MCP server test proving credentials remain transport-only.
+- [x] 5.2 Implement startup/reconnect tool discovery, stable server namespaces, and fail-closed per-server allowlists; verify duplicate names do not collide and newly discovered unlisted tools remain absent from Pi sessions.
+- [x] 5.3 Adapt enabled MCP schemas and calls into Pi tools with local argument validation, cancellation propagation, timeouts, and result-size truncation; verify invalid, cancelled, timed-out, oversized, and successful fake calls produce the expected structured results.
+- [x] 5.4 Add application-level tool execution hooks and redacted audit transitions recorded before and after calls; verify audits distinguish success, failure, timeout, cancellation, and indeterminate interruption without storing credentials.
+- [x] 5.5 Implement MCP connection health, bounded reconnection backoff, and unavailable-capability responses; verify an MCP outage leaves Telegram and unrelated agent conversations operational in degraded mode.
+- [x] 5.6 Add a generic configurable MCP integration fixture representing non-critical household operations; verify only its reviewed fixture allowlist is exposed to the model and no Home Assistant-specific adapter exists.
 
 ## 6. Telegram Response Delivery
 
