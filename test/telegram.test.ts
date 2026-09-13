@@ -64,8 +64,21 @@ describe("Telegram admission", () => {
         }),
         policy,
         bot,
-      ),
-    ).toBeDefined();
+      )?.text,
+    ).toBe("hi");
+    expect(
+      admitUpdate(
+        update({
+          message: {
+            ...base,
+            text: "Klaus hi",
+            entities: [{ type: "text_mention", offset: 0, length: 5, user: { id: 99 } }],
+          },
+        }),
+        policy,
+        bot,
+      )?.text,
+    ).toBe("hi");
     expect(
       admitUpdate(
         update({

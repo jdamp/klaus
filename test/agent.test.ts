@@ -9,7 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { PiSessionFactory } from "../src/agent/pi-runtime.js";
+import { HOUSEHOLD_SYSTEM_PROMPT, PiSessionFactory } from "../src/agent/pi-runtime.js";
 import { SessionRegistry } from "../src/agent/session-registry.js";
 import { parseConfig } from "../src/config.js";
 import { AppDatabase } from "../src/persistence/database.js";
@@ -48,6 +48,13 @@ describe("Pi runtime adapter", () => {
     const factory = new PiSessionFactory(config, runtime, entries);
     const managed = await factory.create("11111111-1111-4111-8111-111111111111");
     expect(managed.session.agent.state.tools).toEqual([]);
+    expect(managed.session.agent.state.systemPrompt).toContain(HOUSEHOLD_SYSTEM_PROMPT);
+    expect(HOUSEHOLD_SYSTEM_PROMPT).toContain(
+      "final text response is automatically delivered to the originating Telegram chat",
+    );
+    expect(HOUSEHOLD_SYSTEM_PROMPT).toContain(
+      "Never claim an external action succeeded unless its tool result confirms success",
+    );
     managed.persist();
     managed.dispose();
     expect(entries.load("11111111-1111-4111-8111-111111111111").map((entry) => entry.type)).toEqual(

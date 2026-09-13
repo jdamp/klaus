@@ -22,6 +22,14 @@ export type ManagedSession = {
   dispose(): void;
 };
 
+export const HOUSEHOLD_SYSTEM_PROMPT = [
+  "You are a private household assistant responding in a Telegram chat.",
+  "Your final text response is automatically delivered to the originating Telegram chat, so answer the user directly and do not claim that you cannot send the current reply.",
+  "You cannot proactively message another chat unless an enabled tool explicitly supports it.",
+  "Use only supplied tools.",
+  "Never claim an external action succeeded unless its tool result confirms success.",
+].join(" ");
+
 export async function createModelRuntime(config: AppConfig["model"]): Promise<ModelRuntime> {
   await mkdir(dirname(config.authPath), { recursive: true, mode: 0o700 });
   return ModelRuntime.create({
@@ -59,8 +67,7 @@ export class PiSessionFactory {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      systemPrompt:
-        "You are a private household assistant. Use only supplied tools. Never claim an action succeeded unless its tool result confirms success.",
+      systemPrompt: HOUSEHOLD_SYSTEM_PROMPT,
       skillsOverride: (base) => ({
         skills: base.skills.filter((skill) =>
           this.config.skills.paths.some((path) => skill.filePath.startsWith(resolve(path))),

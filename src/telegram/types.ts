@@ -2,6 +2,7 @@ export type TelegramEntity = {
   type: string;
   offset: number;
   length: number;
+  user?: TelegramUser;
 };
 
 export type TelegramUser = {
