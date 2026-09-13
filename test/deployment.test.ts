@@ -28,12 +28,16 @@ describe("packaging and deployment examples", () => {
 
   it("defines a pinned multi-stage non-root image with explicit runtime mounts and healthcheck", async () => {
     const dockerfile = await readFile("Dockerfile", "utf8");
-    expect(dockerfile).toContain("ARG NODE_IMAGE=node:22.23.0-bookworm-slim");
-    expect(dockerfile.match(/^FROM /gm)).toHaveLength(2);
+    expect(dockerfile).toContain(
+      "ARG NODE_IMAGE=node:22.23.0-bookworm-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2",
+    );
+    expect(dockerfile.match(/^FROM /gm)?.length).toBeGreaterThanOrEqual(3);
     expect(dockerfile).toContain("USER node");
     expect(dockerfile).toContain('VOLUME ["/var/lib/klaus-agent", "/var/lib/klaus-agent-auth"]');
     expect(dockerfile).toContain("HEALTHCHECK");
     expect(dockerfile).toContain('ENTRYPOINT ["node", "--experimental-sqlite"');
+    expect(dockerfile).toContain("FROM runtime AS verification");
+    expect(dockerfile).toContain("FROM runtime AS final");
   });
 
   it("renders a single-consumer restricted k3s deployment with durable state", async () => {

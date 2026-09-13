@@ -1,0 +1,25 @@
+telegram:
+  tokenFile: /run/secrets/telegram/token
+  allowedUsers: ["111111111"]
+  allowedChats: ["111111111"]
+  pollingTimeoutSeconds: 1
+
+model:
+  provider: openai-codex
+  id: gpt-5.4
+  reasoning: medium
+  authPath: /var/lib/klaus-agent-auth/auth.json
+  contextTokens: 4096
+  retryLimit: 0
+
+mcp: []
+skills:
+  paths: []
+
+data:
+  directory: /var/lib/klaus-agent
+  retentionDays: 1
+
+health:
+  host: 127.0.0.1
+  port: 18081

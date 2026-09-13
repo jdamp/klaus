@@ -56,7 +56,7 @@
 
 ## 8. Packaging and Deployment
 
-- [ ] 8.1 Create a pinned multi-stage container build with a non-root runtime user, read-only application filesystem, writable data and Pi-authentication mounts, and a health check; verify the image builds and starts against temporary configuration and storage.
+- [x] 8.1 Create a pinned multi-stage container build with a non-root runtime user, read-only application filesystem, writable data and Pi-authentication mounts, and a health check; verify the image builds and starts against temporary configuration and storage.
 - [x] 8.2 Add documented local-development and example configuration/secret layouts with safe placeholders, including Telegram ID discovery, Pi OAuth bootstrap, and generic MCP settings; verify the examples pass configuration validation without containing real credentials.
 - [x] 8.3 Add a single-replica k3s deployment example with persistent application and Pi-authentication storage, mounted Secrets, restricted security context, graceful termination, and replacement semantics; verify manifest rendering and policy checks succeed.
 - [x] 8.4 Document SQLite backup, restore, migration, upgrade, and rollback procedures; verify a backup-and-restore smoke test recovers sessions, outbox state, and audit state into a fresh runtime.
