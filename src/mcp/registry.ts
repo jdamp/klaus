@@ -111,7 +111,7 @@ export class McpRegistry {
     }
     const listed = await client.listTools();
     for (const tool of listed.tools) {
-      if (!config.tools.includes(tool.name)) continue;
+      if (config.tools && !config.tools.includes(tool.name)) continue;
       const publicName = `${config.id}__${tool.name}`;
       if (this.#tools.has(publicName)) throw new Error(`Duplicate MCP tool: ${publicName}`);
       this.#tools.set(publicName, {

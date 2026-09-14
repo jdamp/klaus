@@ -15,7 +15,6 @@ function config(overrides: Partial<McpServerConfig> = {}): McpServerConfig {
   return {
     id: "home",
     url: "https://mcp.example.test/mcp",
-    tools: ["light", "vacuum"],
     timeoutMs: 50,
     maxResultBytes: 64,
     ...overrides,
@@ -23,7 +22,7 @@ function config(overrides: Partial<McpServerConfig> = {}): McpServerConfig {
 }
 
 describe("generic MCP registry", () => {
-  it("namespaces only allowlisted tools and validates arguments locally", async () => {
+  it("namespaces all discovered tools by default and validates arguments locally", async () => {
     const calls: string[] = [];
     const client: McpClientLike = {
       connect: async () => undefined,
@@ -54,11 +53,44 @@ describe("generic MCP registry", () => {
       async () => client,
     );
     await registry.connect();
-    expect(registry.names()).toEqual(["home__light"]);
+    expect(registry.names()).toEqual(["home__light", "home__surprise"]);
     await expect(registry.call("home__light", { on: "yes" })).rejects.toThrow("Invalid");
     expect(calls).toEqual([]);
     expect(await registry.call("home__light", { on: true })).toEqual({ ok: true });
-    expect(registry.piTools().map((tool) => tool.name)).toEqual(["home__light"]);
+    expect(registry.piTools().map((tool) => tool.name)).toEqual([
+      "home__light",
+      "home__surprise",
+    ]);
+    database.close();
+  });
+
+  it("supports explicit restrictive and disabled tool policies", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const client: McpClientLike = {
+      connect: async () => undefined,
+      close: async () => undefined,
+      listTools: async () => ({
+        tools: [
+          { name: "light", inputSchema: { type: "object" } },
+          { name: "vacuum", inputSchema: { type: "object" } },
+        ],
+      }),
+      callTool: async () => ({ ok: true }),
+    };
+    const registry = new McpRegistry(
+      [
+        config({ id: "restricted", tools: ["light"] }),
+        config({ id: "disabled", tools: [] }),
+      ],
+      new ToolAuditRepository(database),
+      async () => client,
+    );
+
+    await registry.connect();
+    expect(registry.names()).toEqual(["restricted__light"]);
+    await expect(registry.call("restricted__vacuum", {})).rejects.toThrow("unavailable");
+    await expect(registry.call("disabled__light", {})).rejects.toThrow("unavailable");
     database.close();
   });
 
@@ -97,7 +129,7 @@ describe("generic MCP registry", () => {
     const database = new AppDatabase(":memory:");
     database.migrate();
     const registry = new McpRegistry(
-      [config({ tools: ["light", "vacuum", "desk", "shopping_list"] })],
+      [config()],
       new ToolAuditRepository(database),
       async () => householdMcpFixture(),
     );
@@ -222,6 +254,42 @@ describe("generic MCP registry", () => {
       .prepare("SELECT status FROM tool_executions ORDER BY started_at DESC LIMIT 1")
       .get() as { status: string };
     expect(row.status).toBe("timeout");
+    database.close();
+  });
+
+  it("applies exposure policy when reconnecting to an expanded catalogue", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    let expanded = false;
+    const client: McpClientLike = {
+      connect: async () => undefined,
+      close: async () => undefined,
+      listTools: async () => ({
+        tools: [
+          { name: "light", inputSchema: { type: "object" as const } },
+          ...(expanded
+            ? [{ name: "vacuum", inputSchema: { type: "object" as const } }]
+            : []),
+        ],
+      }),
+      callTool: async () => ({ ok: true }),
+    };
+    const registry = new McpRegistry(
+      [config({ id: "open" }), config({ id: "restricted", tools: ["light"] })],
+      new ToolAuditRepository(database),
+      async () => client,
+    );
+
+    await registry.connect();
+    expect(registry.names()).toEqual(["open__light", "restricted__light"]);
+    expanded = true;
+    expect(await registry.reconnect("open", 1)).toBe(true);
+    expect(await registry.reconnect("restricted", 1)).toBe(true);
+    expect(registry.names()).toEqual([
+      "open__light",
+      "open__vacuum",
+      "restricted__light",
+    ]);
     database.close();
   });
 

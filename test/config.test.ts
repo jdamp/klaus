@@ -24,7 +24,6 @@ mcp:
   - id: home
     url: http://home-mcp.default.svc/mcp
     tokenFile: ${root}/mcp-token
-    tools: [get_state, call_service]
 skills:
   paths: [${root}/skills]
 health:
@@ -37,7 +36,22 @@ describe("configuration and secrets", () => {
     const config = parseConfig(validYaml("/tmp/klaus"));
     expect(config.telegram.allowedChats).toContain("-100789");
     expect(config.mcp[0]?.id).toBe("home");
+    expect(config.mcp[0]?.tools).toBeUndefined();
     expect(() => parseConfig("telegram: {}")).toThrow();
+  });
+
+  it("distinguishes unrestricted, restricted, and disabled MCP tool exposure", () => {
+    const unrestricted = parseConfig(validYaml("/tmp/klaus"));
+    const restricted = parseConfig(
+      validYaml("/tmp/klaus").replace("skills:", "    tools: [get_state, call_service]\nskills:"),
+    );
+    const disabled = parseConfig(
+      validYaml("/tmp/klaus").replace("skills:", "    tools: []\nskills:"),
+    );
+
+    expect(unrestricted.mcp[0]?.tools).toBeUndefined();
+    expect(restricted.mcp[0]?.tools).toEqual(["get_state", "call_service"]);
+    expect(disabled.mcp[0]?.tools).toEqual([]);
   });
 
   it("rejects duplicate MCP ids and embedded credentials", () => {

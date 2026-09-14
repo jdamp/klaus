@@ -23,7 +23,7 @@ const mcpServerSchema = z.object({
       return !url.username && !url.password && !url.hash;
     }, "must not contain embedded credentials or a fragment"),
   tokenFile: pathValue.optional(),
-  tools: z.array(z.string().min(1)).min(1),
+  tools: z.array(z.string().min(1)).optional(),
   timeoutMs: z.number().int().positive().default(15_000),
   maxResultBytes: z
     .number()

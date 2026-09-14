@@ -1,12 +1,12 @@
 ## 1. MCP Exposure Configuration
 
-- [ ] 1.1 Make each MCP server's `tools` field optional while preserving the distinction between omission, a non-empty restriction list, and an explicit empty list; verify configuration tests cover all three states and continue rejecting malformed entries.
-- [ ] 1.2 Update typed fixtures and public configuration serialization for the optional field; verify existing configurations with non-empty lists retain their parsed restrictive policy.
+- [x] 1.1 Make each MCP server's `tools` field optional while preserving the distinction between omission, a non-empty restriction list, and an explicit empty list; verify configuration tests cover all three states and continue rejecting malformed entries.
+- [x] 1.2 Update typed fixtures and public configuration serialization for the optional field; verify existing configurations with non-empty lists retain their parsed restrictive policy.
 
 ## 2. Discovery and Registry Behavior
 
-- [ ] 2.1 Update MCP discovery to expose every valid discovered tool when `tools` is omitted, only named tools for a non-empty list, and no tools for an empty list; verify registry tests cover namespacing and each policy state.
-- [ ] 2.2 Apply the same exposure predicate during reconnect and verify a newly discovered tool becomes available automatically only for an unrestricted server.
+- [x] 2.1 Update MCP discovery to expose every valid discovered tool when `tools` is omitted, only named tools for a non-empty list, and no tools for an empty list; verify registry tests cover namespacing and each policy state.
+- [x] 2.2 Apply the same exposure predicate during reconnect and verify a newly discovered tool becomes available automatically only for an unrestricted server.
 - [ ] 2.3 Re-run capability-boundary tests and verify default-all MCP discovery does not enable Pi coding tools, generic HTTP, unconfigured servers, or bypass argument validation, execution bounds, credential isolation, and auditing.
 
 ## 3. Operator Experience and Verification
