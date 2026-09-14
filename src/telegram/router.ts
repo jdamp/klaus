@@ -2,6 +2,7 @@ import type { ChatRepository, UpdateRepository } from "../persistence/repositori
 import type { KeyedQueue } from "../dispatch/keyed-queue.js";
 import { admitUpdate, type AdmissionPolicy } from "./admission.js";
 import type { AcceptedTelegramInput, BotIdentity, TelegramUpdate } from "./types.js";
+import type { TelegramTypingActivity } from "./typing-activity.js";
 
 export class TelegramRouter {
   constructor(
@@ -9,6 +10,7 @@ export class TelegramRouter {
     private readonly updates: UpdateRepository,
     private readonly chats: ChatRepository,
     private readonly queue: KeyedQueue,
+    private readonly typing: TelegramTypingActivity,
     private readonly dispatch: (input: AcceptedTelegramInput, sessionId: string) => Promise<void>,
   ) {}
 
@@ -28,20 +30,22 @@ export class TelegramRouter {
     }
 
     const sessionId = this.chats.ensure(input.chatId, input.chatType);
-    void this.queue.enqueue(input.chatId, async () => {
-      try {
-        const activeSession =
-          input.command === "new" ? this.chats.newSession(input.chatId) : sessionId;
-        await this.dispatch(input, activeSession);
-        this.updates.finish(input.updateId, "complete");
-      } catch (error) {
-        this.updates.finish(
-          input.updateId,
-          "indeterminate",
-          error instanceof Error ? error.message : "Unknown processing error",
-        );
-      }
-    });
+    void this.queue.enqueue(input.chatId, () =>
+      this.typing.run(input.chatId, async () => {
+        try {
+          const activeSession =
+            input.command === "new" ? this.chats.newSession(input.chatId) : sessionId;
+          await this.dispatch(input, activeSession);
+          this.updates.finish(input.updateId, "complete");
+        } catch (error) {
+          this.updates.finish(
+            input.updateId,
+            "indeterminate",
+            error instanceof Error ? error.message : "Unknown processing error",
+          );
+        }
+      }),
+    );
     return Promise.resolve(true);
   }
 }

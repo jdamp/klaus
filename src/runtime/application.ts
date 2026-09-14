@@ -22,6 +22,7 @@ import { Logger } from "../observability/logger.js";
 import { TelegramHttpClient } from "../telegram/client.js";
 import { TelegramPoller } from "../telegram/poller.js";
 import { TelegramRouter } from "../telegram/router.js";
+import { TelegramTypingActivity } from "../telegram/typing-activity.js";
 import {
   CapabilityComponent,
   PersistenceComponent,
@@ -70,6 +71,7 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
     new UpdateRepository(database),
     new ChatRepository(database),
     queue,
+    new TelegramTypingActivity(api),
     (input, sessionId) => sessions.handle(input, sessionId),
   );
   const poller = new TelegramPoller(

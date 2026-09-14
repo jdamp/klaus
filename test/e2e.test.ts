@@ -11,6 +11,7 @@ import {
 } from "../src/persistence/repositories.js";
 import { TelegramRouter } from "../src/telegram/router.js";
 import type { TelegramUpdate } from "../src/telegram/types.js";
+import { TelegramTypingActivity } from "../src/telegram/typing-activity.js";
 
 describe("reactive home-agent flow", () => {
   it("authorizes, invokes a model/tool facade, persists, delivers, and suppresses redelivery", async () => {
@@ -40,6 +41,7 @@ describe("reactive home-agent flow", () => {
       new UpdateRepository(database),
       new ChatRepository(database),
       queue,
+      new TelegramTypingActivity({ sendChatAction: async () => undefined }),
       (input, sessionId) => turns.handle(input, sessionId),
     );
     const accepted: TelegramUpdate = {

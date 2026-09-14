@@ -19,6 +19,7 @@ import {
 import { PersistenceComponent, TelegramRuntimeComponent } from "../src/runtime/services.js";
 import { TelegramRouter } from "../src/telegram/router.js";
 import type { TelegramUpdate } from "../src/telegram/types.js";
+import { TelegramTypingActivity } from "../src/telegram/typing-activity.js";
 
 function deferred(): {
   promise: Promise<void>;
@@ -68,6 +69,8 @@ describe("shutdown and restart recovery", () => {
     const events: string[] = [];
     const deliveryStarted = deferred();
     const turnStarted = deferred();
+    const typingStarted = deferred();
+    let typingAborted = false;
     const worker = new OutboxWorker(
       outbox,
       {
@@ -90,6 +93,21 @@ describe("shutdown and restart recovery", () => {
       updates,
       new ChatRepository(database),
       queue,
+      new TelegramTypingActivity({
+        async sendChatAction(_chatId, _action, signal) {
+          typingStarted.resolve();
+          await new Promise<void>((resolve) => {
+            signal?.addEventListener(
+              "abort",
+              () => {
+                typingAborted = true;
+                resolve();
+              },
+              { once: true },
+            );
+          });
+        },
+      }),
       async () => {
         turnStarted.resolve();
         await new Promise<void>((_resolve, reject) => {
@@ -144,8 +162,9 @@ describe("shutdown and restart recovery", () => {
     });
 
     await application.start();
-    await Promise.all([turnStarted.promise, deliveryStarted.promise]);
+    await Promise.all([turnStarted.promise, deliveryStarted.promise, typingStarted.promise]);
     await application.stop();
+    expect(typingAborted).toBe(true);
 
     expect(events).toEqual(
       expect.arrayContaining([
@@ -213,6 +232,7 @@ describe("shutdown and restart recovery", () => {
       new UpdateRepository(second),
       new ChatRepository(second),
       queue,
+      new TelegramTypingActivity({ sendChatAction: async () => undefined }),
       async () => {
         repeatedTurns += 1;
       },

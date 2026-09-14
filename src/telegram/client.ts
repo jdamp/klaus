@@ -15,6 +15,7 @@ export interface TelegramApi {
     replyToMessageId?: string,
     signal?: AbortSignal,
   ): Promise<string>;
+  sendChatAction(chatId: string, action: "typing", signal?: AbortSignal): Promise<void>;
 }
 
 export class TelegramHttpClient implements TelegramApi {
@@ -54,6 +55,10 @@ export class TelegramHttpClient implements TelegramApi {
       { offset, timeout: timeoutSeconds, allowed_updates: ["message"] },
       signal,
     );
+  }
+
+  async sendChatAction(chatId: string, action: "typing", signal?: AbortSignal): Promise<void> {
+    await this.#call<boolean>("sendChatAction", { chat_id: chatId, action }, signal);
   }
 
   async sendMessage(
