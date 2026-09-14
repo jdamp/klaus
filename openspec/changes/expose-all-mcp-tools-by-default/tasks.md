@@ -12,5 +12,5 @@
 ## 3. Operator Experience and Verification
 
 - [x] 3.1 Update the README, example k3s configuration, deployment guidance, and staged checklist so omission is the primary trusted-server example and explicit list/empty-list restriction modes are documented; verify example configuration and manifest tests pass.
-- [ ] 3.2 Run formatting, linting, type checking, unit/integration tests, production build, and strict OpenSpec validation; verify all project gates pass.
-- [ ] 3.3 Remove the restrictive `tools` field from the local Home Assistant MCP configuration, restart the live bot, and verify representative formerly unlisted namespaced tools are available while readiness remains healthy.
+- [x] 3.2 Run formatting, linting, type checking, unit/integration tests, production build, and strict OpenSpec validation; verify all project gates pass.
+- [x] 3.3 Remove the restrictive `tools` field from the local Home Assistant MCP configuration, restart the live bot, and verify representative formerly unlisted namespaced tools are available while readiness remains healthy.
