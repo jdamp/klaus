@@ -20,6 +20,13 @@ The system SHALL durably retain accepted user messages, assistant messages, stru
 - **WHEN** the service restarts after completing a turn and the same chat sends another accepted message
 - **THEN** the new turn resumes with the durable context of that chat
 
+### Requirement: A session's reasoning configuration survives recreation
+The system SHALL durably retain the most recently selected reasoning level for an active conversation and restore it when that conversation is recreated after restart or session-cache eviction. This session-level setting SHALL NOT invoke the conversational model when changed.
+
+#### Scenario: Service recreates a configured session
+- **WHEN** a chat selects a reasoning level and its active session is later recreated before or after a model turn
+- **THEN** the recreated session uses the selected effective reasoning level
+
 ### Requirement: Model context remains bounded
 The system SHALL construct model input from current instructions, relevant durable memory, a compacted summary of older conversation, and a bounded recent-message tail rather than sending the entire retained transcript on every turn.
 

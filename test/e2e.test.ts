@@ -100,7 +100,16 @@ describe("reactive home-agent flow", () => {
     const control = {
       status: async (_chatId: string, sessionId: string) => ({
         model: models[0]!,
-        thinkingLevel: "medium",
+        thinkingLevel: "medium" as const,
+        availableThinkingLevels: [
+          "off",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+        ] as const,
         stats: {
           sessionFile: undefined,
           sessionId,
@@ -121,6 +130,11 @@ describe("reactive home-agent flow", () => {
         chats.setModelPreference(chatId, selected.provider, selected.id);
         return selected;
       },
+      setThinkingLevel: async (
+        _chatId: string,
+        _sessionId: string,
+        level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max",
+      ) => level,
       compact: async () => "nothing" as const,
       abortCurrent: async () => false,
     };

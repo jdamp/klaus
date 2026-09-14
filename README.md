@@ -43,8 +43,9 @@ as `/status` in a private chat.
   cost for the current session, and current context-window utilization. It cannot report provider
   subscription quota, and context usage can be unknown until the first response after compaction.
 - `/model` opens a paginated inline selector containing every model Pi currently reports as
-  available from authenticated backends. `/model provider/model-id` selects an exact model directly.
-  The selection is stored per chat and survives restart, cache eviction, compaction, and `/new`.
+  available from authenticated backends, plus controls for the active model's reasoning level.
+  `/model provider/model-id` selects an exact model directly. The model selection is stored per chat
+  and survives restart, cache eviction, compaction, and `/new`.
 - `/compact` asks Pi to summarize older context. Compaction itself uses the selected model and can
   consume additional tokens.
 - `/stop` requests cancellation of the operation active in that chat. It does not affect another

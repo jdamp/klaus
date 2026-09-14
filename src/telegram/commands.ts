@@ -8,7 +8,7 @@ export type TelegramCommandDefinition = {
 export const TELEGRAM_COMMANDS: readonly TelegramCommandDefinition[] = [
   { name: "start", description: "Show available commands" },
   { name: "status", description: "Show model, usage, cost, and context" },
-  { name: "model", description: "Select the model for this chat" },
+  { name: "model", description: "Select the model and reasoning level for this chat" },
   { name: "compact", description: "Compact the current conversation" },
   { name: "stop", description: "Stop the current operation" },
   { name: "new", description: "Start a fresh conversation" },

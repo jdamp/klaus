@@ -44,15 +44,19 @@ The `/status` command SHALL report the active model and reasoning level, cumulat
 - **THEN** the response identifies current context usage as unknown rather than reporting zero
 
 ### Requirement: Users can select any backend-available model
-The `/model` command SHALL show the current chat model and a paginated inline selector containing every model the Pi model runtime reports as available from authenticated backends. The system SHALL also accept `/model <provider>/<model-id>` for exact direct selection. A successful selection SHALL affect only the invoking chat and SHALL NOT invoke the conversational model.
+The `/model` command SHALL show the current chat model and a paginated inline selector containing every model the Pi model runtime reports as available from authenticated backends. The selector SHALL also expose the reasoning levels supported by the active model and identify the current reasoning level. The system SHALL also accept `/model <provider>/<model-id>` for exact direct selection. A successful model or reasoning selection SHALL affect only the invoking chat and SHALL NOT invoke the conversational model.
 
 #### Scenario: User opens the model selector
 - **WHEN** an authorized user sends `/model` without an argument
-- **THEN** the system returns the current selection and inline controls through which every currently available model can be reached
+- **THEN** the system returns the current model and reasoning level with inline controls through which every currently available model and every reasoning level supported by the active model can be reached
 
 #### Scenario: User selects an inline model
 - **WHEN** an authorized user activates a valid model button from the invoking chat
 - **THEN** the system selects that model for the chat and acknowledges the resulting provider and model identifier
+
+#### Scenario: User selects an inline reasoning level
+- **WHEN** an authorized user activates a valid reasoning-level button from the invoking chat
+- **THEN** the system applies that level to the active session, persists the session configuration, and acknowledges the effective reasoning level
 
 #### Scenario: User directly selects an available model
 - **WHEN** an authorized user sends an exact provider and model identifier that is currently available
@@ -61,6 +65,10 @@ The `/model` command SHALL show the current chat model and a paginated inline se
 #### Scenario: Requested model is unavailable
 - **WHEN** a direct command or stale inline button identifies a model that is no longer available
 - **THEN** the system reports that the selection is unavailable and leaves the chat's model preference unchanged
+
+#### Scenario: Requested reasoning level is unavailable
+- **WHEN** a stale or malformed inline button identifies a reasoning level that the active model does not support
+- **THEN** the system reports that the reasoning selection is stale and leaves the session's reasoning level unchanged
 
 ### Requirement: Users can manually compact the current conversation
 The `/compact` command SHALL invoke Pi's manual compaction for the invoking chat's active conversation, persist a successful compaction, and report whether compaction completed or there was insufficient history to compact. The command itself MUST NOT be added to conversation history.

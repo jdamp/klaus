@@ -1,4 +1,5 @@
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 
 import { PiSessionFactory } from "../agent/pi-runtime.js";
 import { SessionRegistry } from "../agent/session-registry.js";
@@ -137,6 +138,7 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
     return {
       ...(model ? { model: { provider: model.provider, id: model.id } } : {}),
       thinkingLevel: managed.session.thinkingLevel,
+      availableThinkingLevels: managed.session.getAvailableThinkingLevels(),
       stats: managed.session.getSessionStats(),
       ...(preferredModel ? { preferredModel } : {}),
     };
@@ -189,6 +191,17 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
     managed.persist();
     this.#chats?.setModelPreference(chatId, selected.provider, selected.id);
     return { provider: selected.provider, id: selected.id };
+  }
+
+  async setThinkingLevel(
+    chatId: string,
+    sessionId: string,
+    level: ThinkingLevel,
+  ): Promise<ThinkingLevel> {
+    const managed = await this.#get(chatId, sessionId);
+    managed.session.setThinkingLevel(level);
+    managed.persist();
+    return managed.session.thinkingLevel;
   }
 
   async compact(chatId: string, sessionId: string): Promise<"compacted" | "nothing" | "cancelled"> {

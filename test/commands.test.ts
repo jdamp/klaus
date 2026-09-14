@@ -45,11 +45,13 @@ function fakeControl(models: AvailableModel[] = []): TelegramSessionControl & {
   selected: string[];
   compactResult: "compacted" | "nothing" | "cancelled";
   stopped: boolean;
+  thinking: string[];
 } {
   return {
     selected: [],
     compactResult: "nothing",
     stopped: false,
+    thinking: [],
     status: async () => ({
       model: models[0] ?? { provider: "openai", id: "gpt" },
       thinkingLevel: "medium",
@@ -74,6 +76,10 @@ function fakeControl(models: AvailableModel[] = []): TelegramSessionControl & {
       if (!selected) throw new Error(`Model is not available: ${reference}`);
       this.selected.push(reference);
       return selected;
+    },
+    async setThinkingLevel(_chatId, _sessionId, level) {
+      this.thinking.push(level);
+      return level;
     },
     async compact() {
       return this.compactResult;
@@ -170,7 +176,13 @@ describe("Telegram local commands", () => {
       inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
     };
     expect(first.text).toContain("page 1/2, 10 available");
+    expect(first.text).toContain("Reasoning: medium");
     expect(markup.inline_keyboard.flat().some((button) => button.text === "Next")).toBe(true);
+    const highThinking = markup.inline_keyboard.flat().find((button) => button.text === "high");
+    expect(highThinking).toBeDefined();
+
+    await handler.handle(callback("2", highThinking!.callback_data), sessionId);
+    expect(control.thinking).toEqual(["high"]);
 
     const selectionData = markup.inline_keyboard[0]![0]!.callback_data;
     await handler.handle(callback("2", selectionData), sessionId);

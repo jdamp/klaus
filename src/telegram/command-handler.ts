@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { SessionStats } from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 
 import { enqueueResponse } from "../delivery/intents.js";
 import type { ChatRepository, OutboxRepository } from "../persistence/repositories.js";
@@ -10,7 +11,8 @@ import type { AcceptedTelegramInput, TelegramInlineKeyboardMarkup } from "./type
 export type AvailableModel = { provider: string; id: string };
 export type SessionStatus = {
   model?: AvailableModel;
-  thinkingLevel: string;
+  thinkingLevel: ThinkingLevel;
+  availableThinkingLevels?: readonly ThinkingLevel[];
   stats: SessionStats;
   preferredModel?: { provider: string; modelId: string };
 };
@@ -19,12 +21,22 @@ export interface TelegramSessionControl {
   status(chatId: string, sessionId: string): Promise<SessionStatus>;
   availableModels(refresh: boolean): Promise<{ models: AvailableModel[]; warning?: string }>;
   selectModel(chatId: string, sessionId: string, reference: string): Promise<AvailableModel>;
+  setThinkingLevel(chatId: string, sessionId: string, level: ThinkingLevel): Promise<ThinkingLevel>;
   compact(chatId: string, sessionId: string): Promise<"compacted" | "nothing" | "cancelled">;
   abortCurrent(sessionId: string): Promise<boolean>;
 }
 
 const MODEL_PAGE_SIZE = 8;
 const CALLBACK_PREFIX = "k:model:";
+const DEFAULT_THINKING_LEVELS: readonly ThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 function modelReference(model: AvailableModel): string {
   return `${model.provider}/${model.id}`;
@@ -48,6 +60,8 @@ export function buildModelSelector(
   models: readonly AvailableModel[],
   requestedPage: number,
   current?: AvailableModel,
+  thinkingLevel?: ThinkingLevel,
+  availableThinkingLevels: readonly ThinkingLevel[] = DEFAULT_THINKING_LEVELS,
 ): { text: string; replyMarkup: TelegramInlineKeyboardMarkup } | undefined {
   if (models.length === 0) return undefined;
   const pages = Math.ceil(models.length / MODEL_PAGE_SIZE);
@@ -62,6 +76,14 @@ export function buildModelSelector(
       callback_data: `${CALLBACK_PREFIX}s:${modelDigest(model)}`,
     },
   ]);
+  if (availableThinkingLevels.length > 0) {
+    rows.push(
+      availableThinkingLevels.map((level) => ({
+        text: `${level === thinkingLevel ? "* " : ""}${level}`,
+        callback_data: `${CALLBACK_PREFIX}t:${level}`,
+      })),
+    );
+  }
   const navigation = [];
   if (requestedPage > 0) {
     navigation.push({
@@ -74,7 +96,7 @@ export function buildModelSelector(
   }
   if (navigation.length > 0) rows.push(navigation);
   return {
-    text: `Select a model (page ${requestedPage + 1}/${pages}, ${models.length} available).\nCurrent: ${current ? modelReference(current) : "unknown"}`,
+    text: `Select a model (page ${requestedPage + 1}/${pages}, ${models.length} available).\nCurrent: ${current ? modelReference(current) : "unknown"}${thinkingLevel ? `\nReasoning: ${thinkingLevel}` : ""}`,
     replyMarkup: { inline_keyboard: rows },
   };
 }
@@ -204,6 +226,22 @@ export class TelegramCommandHandler {
       await this.#sendModelPage(input, sessionId, page, false);
       return;
     }
+    if (action.startsWith("t:")) {
+      const level = action.slice(2);
+      const status = await this.sessions.status(input.chatId, sessionId);
+      const availableThinkingLevels = status.availableThinkingLevels ?? DEFAULT_THINKING_LEVELS;
+      if (!availableThinkingLevels.includes(level as ThinkingLevel)) {
+        enqueueResponse(this.outbox, input, "That reasoning choice is stale. Open /model again.");
+        return;
+      }
+      const selected = await this.sessions.setThinkingLevel(
+        input.chatId,
+        sessionId,
+        level as ThinkingLevel,
+      );
+      enqueueResponse(this.outbox, input, `Reasoning selected: ${selected}`);
+      return;
+    }
     if (action.startsWith("s:")) {
       const digest = action.slice(2);
       const { models } = await this.sessions.availableModels(false);
@@ -234,7 +272,13 @@ export class TelegramCommandHandler {
       this.sessions.availableModels(refresh),
       this.sessions.status(input.chatId, sessionId),
     ]);
-    const selector = buildModelSelector(models, page, status.model);
+    const selector = buildModelSelector(
+      models,
+      page,
+      status.model,
+      status.thinkingLevel,
+      status.availableThinkingLevels,
+    );
     if (!selector) {
       enqueueResponse(
         this.outbox,

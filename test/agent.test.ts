@@ -60,9 +60,11 @@ describe("Pi runtime adapter", () => {
       "Never claim an external action succeeded unless its tool result confirms success",
     );
     managed.persist();
+    managed.session.setThinkingLevel("high");
+    managed.persist();
     managed.dispose();
     expect(entries.load("11111111-1111-4111-8111-111111111111").map((entry) => entry.type)).toEqual(
-      ["model_change", "thinking_level_change"],
+      ["model_change", "thinking_level_change", "thinking_level_change"],
     );
     const restored = await factory.create("11111111-1111-4111-8111-111111111111");
     expect(
@@ -71,6 +73,7 @@ describe("Pi runtime adapter", () => {
         .slice(0, 2)
         .map((entry) => entry.type),
     ).toEqual(["model_change", "thinking_level_change"]);
+    expect(restored.session.thinkingLevel).toBe("high");
     expect(restored.session.agent.state.tools).toEqual([]);
     restored.dispose();
     database.close();

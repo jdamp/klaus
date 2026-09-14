@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -117,12 +118,21 @@ export class PiSessionFactory {
     const storedThinking = [...storedEntries]
       .reverse()
       .find((entry) => entry.type === "thinking_level_change");
-    const configurationAlreadyRecorded =
+    const modelConfigurationMatches =
       storedModel?.type === "model_change" &&
       storedModel.provider === model.provider &&
-      storedModel.modelId === model.id &&
-      storedThinking?.type === "thinking_level_change" &&
-      storedThinking.thinkingLevel === this.config.model.reasoning;
+      storedModel.modelId === model.id;
+    const storedThinkingLevel: ThinkingLevel | undefined =
+      storedThinking?.type === "thinking_level_change"
+        ? (storedThinking.thinkingLevel as ThinkingLevel)
+        : undefined;
+    // Preserve a user-selected level when a managed session is recreated, including before its first turn.
+    const initialThinkingLevel =
+      modelConfigurationMatches && storedThinkingLevel !== undefined
+        ? storedThinkingLevel === this.config.model.reasoning
+          ? undefined
+          : storedThinkingLevel
+        : this.config.model.reasoning;
     const sessionManager = SessionManager.inMemory(process.cwd(), { id: sessionId }, storedEntries);
     const settingsManager = SettingsManager.inMemory({
       compaction: {
@@ -140,7 +150,7 @@ export class PiSessionFactory {
     const { session } = await createAgentSession({
       modelRuntime: this.runtime,
       model,
-      ...(!configurationAlreadyRecorded ? { thinkingLevel: this.config.model.reasoning } : {}),
+      ...(initialThinkingLevel !== undefined ? { thinkingLevel: initialThinkingLevel } : {}),
       resourceLoader,
       sessionManager,
       settingsManager,
