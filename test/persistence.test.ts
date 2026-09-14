@@ -9,6 +9,34 @@ import {
   UpdateRepository,
 } from "../src/persistence/repositories.js";
 
+function updatesForCancellation(database: AppDatabase): void {
+  const updates = new UpdateRepository(database);
+  expect(
+    updates.claim({
+      updateId: "cancelled-update",
+      chatId: "1",
+      senderId: "1",
+      messageId: "8",
+      text: "/stop",
+    }),
+  ).toBe(true);
+  updates.finish("cancelled-update", "cancelled", "stopped by user");
+  expect(
+    database.connection
+      .prepare("SELECT state FROM telegram_updates WHERE update_id='cancelled-update'")
+      .get(),
+  ).toMatchObject({ state: "cancelled" });
+  expect(
+    updates.claim({
+      updateId: "cancelled-update",
+      chatId: "1",
+      senderId: "1",
+      messageId: "8",
+      text: "/stop",
+    }),
+  ).toBe(false);
+}
+
 describe("SQLite persistence", () => {
   it("migrates idempotently in WAL mode", () => {
     const database = new AppDatabase(":memory:");
@@ -20,12 +48,63 @@ describe("SQLite persistence", () => {
     expect(tables.map((row) => row.name)).toEqual(
       expect.arrayContaining([
         "chats",
+        "chat_model_preferences",
         "telegram_updates",
         "session_entries",
         "tool_executions",
         "outbox_messages",
       ]),
     );
+    database.close();
+  });
+
+  it("upgrades the original schema without losing update or outbox rows", () => {
+    const database = new AppDatabase(":memory:");
+    database.connection.exec(`
+      CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+      INSERT INTO schema_migrations VALUES (1, 'old');
+      CREATE TABLE chats (
+        chat_id TEXT PRIMARY KEY, chat_type TEXT NOT NULL, active_session_id TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE telegram_updates (
+        update_id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, sender_id TEXT NOT NULL,
+        message_id TEXT NOT NULL, text TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('claimed','complete','failed','indeterminate')),
+        failure TEXT, received_at TEXT NOT NULL, completed_at TEXT
+      );
+      CREATE TABLE outbox_messages (
+        id TEXT PRIMARY KEY, dedupe_key TEXT NOT NULL UNIQUE, chat_id TEXT NOT NULL,
+        reply_to_message_id TEXT, sequence INTEGER NOT NULL, text TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('pending','leased','sent','cancelled')),
+        attempts INTEGER NOT NULL DEFAULT 0, available_at TEXT NOT NULL, lease_until TEXT,
+        telegram_message_id TEXT, last_error TEXT, created_at TEXT NOT NULL, sent_at TEXT
+      );
+      CREATE INDEX outbox_ready_idx ON outbox_messages(state, available_at, sequence);
+      INSERT INTO chats VALUES ('1','private','session','old','old');
+      INSERT INTO telegram_updates VALUES ('u','1','1','1','hello','complete',NULL,'old','old');
+      INSERT INTO outbox_messages(
+        id,dedupe_key,chat_id,sequence,text,state,available_at,created_at
+      ) VALUES ('o','d','1',0,'reply','pending','old','old');
+    `);
+
+    database.migrate();
+
+    expect(
+      database.connection
+        .prepare("SELECT text,state FROM telegram_updates WHERE update_id='u'")
+        .get(),
+    ).toEqual({ text: "hello", state: "complete" });
+    expect(
+      database.connection
+        .prepare("SELECT text,reply_markup_json FROM outbox_messages WHERE id='o'")
+        .get(),
+    ).toEqual({ text: "reply", reply_markup_json: null });
+    expect(
+      database.connection
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='outbox_ready_idx'")
+        .get(),
+    ).toBeDefined();
     database.close();
   });
 
@@ -64,7 +143,16 @@ describe("SQLite persistence", () => {
     ] as const;
     sessions.replace(sessionId, entries);
     expect(sessions.load(sessionId).map((entry) => entry.id)).toEqual(["a", "b"]);
+    chats.setModelPreference("1", "openai", "gpt-test");
+    chats.ensure("2", "private");
+    chats.setModelPreference("2", "anthropic", "claude-test");
+    expect(chats.modelPreference("1")).toEqual({ provider: "openai", modelId: "gpt-test" });
+    expect(chats.modelPreference("2")).toEqual({
+      provider: "anthropic",
+      modelId: "claude-test",
+    });
     expect(chats.newSession("1")).not.toBe(sessionId);
+    expect(chats.modelPreference("1")).toEqual({ provider: "openai", modelId: "gpt-test" });
     database.close();
   });
 
@@ -82,6 +170,9 @@ describe("SQLite persistence", () => {
         chatId: "1",
         sequence: 0,
         text: "x",
+        replyMarkup: {
+          inline_keyboard: [[{ text: "Select", callback_data: "k:model:s:test" }]],
+        },
         availableAt: now,
       }),
     ).toBe(true);
@@ -95,7 +186,13 @@ describe("SQLite persistence", () => {
         availableAt: now,
       }),
     ).toBe(false);
-    expect(outbox.lease(now, 1_000)?.attempts).toBe(1);
+    const firstLease = outbox.lease(now, 1_000);
+    expect(firstLease).toMatchObject({
+      attempts: 1,
+      replyMarkup: {
+        inline_keyboard: [[{ text: "Select", callback_data: "k:model:s:test" }]],
+      },
+    });
     outbox.retry("one", now, "temporary");
     expect(outbox.lease(now, 1_000)?.attempts).toBe(2);
     outbox.sent("one", "99");
@@ -110,6 +207,17 @@ describe("SQLite persistence", () => {
     });
     outbox.cancel("cancel");
     expect(outbox.lease(now, 1_000)).toBeUndefined();
+    expect(() =>
+      outbox.enqueue({
+        dedupeKey: "invalid-keyboard",
+        chatId: "1",
+        sequence: 0,
+        text: "invalid",
+        replyMarkup: { inline_keyboard: [] },
+      }),
+    ).toThrow("Invalid Telegram inline keyboard");
+
+    updatesForCancellation(database);
 
     const outcomes = ["success", "failure", "timeout", "cancelled"] as const;
     for (const outcome of outcomes) {

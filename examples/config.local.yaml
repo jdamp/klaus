@@ -9,6 +9,10 @@ telegram:
     - "-1003333333333"
   pollingTimeoutSeconds: 30
 
+# Optional: replace the built-in household prompt with an explicit UTF-8 file.
+# agent:
+#   systemPromptFile: .local/AGENTS.md
+
 model:
   provider: openai-codex
   id: gpt-5.4

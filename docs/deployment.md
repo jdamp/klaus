@@ -14,14 +14,17 @@ are mounted read-only.
 3. Replace the example Telegram IDs, provider/model selection, and MCP URL in the ConfigMap. An MCP
    server with no `tools` field exposes its discovered catalogue; add a list only when you want to
    restrict that server, or `tools: []` to expose none.
-4. Apply the workload:
+4. If using a custom household prompt, add `agent.systemPromptFile` to the ConfigMap and include the
+   UTF-8 prompt as a read-only ConfigMap or mounted file at that path. The file completely replaces
+   the built-in prompt and must be non-empty; restart the pod after changes.
+5. Apply the workload:
 
    ```sh
    kubectl apply -f deploy/k3s/secret.yaml
    kubectl apply -f deploy/k3s/klaus-agent.yaml
    ```
 
-5. Bootstrap OAuth against the persistent authentication claim before the first rollout, or run
+6. Bootstrap OAuth against the persistent authentication claim before the first rollout, or run
    the container locally with that claim mounted and execute:
 
    ```sh

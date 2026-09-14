@@ -30,6 +30,26 @@ export const HOUSEHOLD_SYSTEM_PROMPT = [
   "Never claim an external action succeeded unless its tool result confirms success.",
 ].join(" ");
 
+export async function loadHouseholdSystemPrompt(config: AppConfig): Promise<string> {
+  if (!config.agent.systemPromptFile) return HOUSEHOLD_SYSTEM_PROMPT;
+
+  let prompt: string;
+  try {
+    prompt = await readFile(config.agent.systemPromptFile, "utf8");
+  } catch (error) {
+    throw new Error(
+      `Unable to read household system prompt file: ${config.agent.systemPromptFile}`,
+      {
+        cause: error,
+      },
+    );
+  }
+  if (!prompt.trim()) {
+    throw new Error(`Household system prompt file is empty: ${config.agent.systemPromptFile}`);
+  }
+  return prompt;
+}
+
 export async function createModelRuntime(config: AppConfig["model"]): Promise<ModelRuntime> {
   await mkdir(dirname(config.authPath), { recursive: true, mode: 0o700 });
   return ModelRuntime.create({
@@ -49,14 +69,29 @@ export class PiSessionFactory {
     private readonly runtime: ModelRuntime,
     private readonly entries: SessionEntryRepository,
     private readonly customTools: readonly ToolDefinition[] = [],
+    private readonly systemPrompt = HOUSEHOLD_SYSTEM_PROMPT,
   ) {}
 
-  async create(sessionId: string): Promise<ManagedSession> {
-    const model = this.runtime.getModel(this.config.model.provider, this.config.model.id);
-    if (!model) {
+  async create(
+    sessionId: string,
+    preferredModel?: { provider: string; modelId: string },
+  ): Promise<ManagedSession> {
+    const fallbackModel = this.runtime.getModel(this.config.model.provider, this.config.model.id);
+    if (!fallbackModel) {
       throw new Error(
         `Unknown configured model: ${this.config.model.provider}/${this.config.model.id}`,
       );
+    }
+    let model = fallbackModel;
+    if (preferredModel) {
+      try {
+        const preferred = (await this.runtime.getAvailable(preferredModel.provider)).find(
+          (candidate) => candidate.id === preferredModel.modelId,
+        );
+        if (preferred) model = preferred;
+      } catch {
+        // A retained preference is non-destructive; use the configured fallback while unavailable.
+      }
     }
 
     const resourceLoader = new DefaultResourceLoader({
@@ -67,7 +102,7 @@ export class PiSessionFactory {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      systemPrompt: HOUSEHOLD_SYSTEM_PROMPT,
+      systemPrompt: this.systemPrompt,
       skillsOverride: (base) => ({
         skills: base.skills.filter((skill) =>
           this.config.skills.paths.some((path) => skill.filePath.startsWith(resolve(path))),
@@ -84,8 +119,8 @@ export class PiSessionFactory {
       .find((entry) => entry.type === "thinking_level_change");
     const configurationAlreadyRecorded =
       storedModel?.type === "model_change" &&
-      storedModel.provider === this.config.model.provider &&
-      storedModel.modelId === this.config.model.id &&
+      storedModel.provider === model.provider &&
+      storedModel.modelId === model.id &&
       storedThinking?.type === "thinking_level_change" &&
       storedThinking.thinkingLevel === this.config.model.reasoning;
     const sessionManager = SessionManager.inMemory(process.cwd(), { id: sessionId }, storedEntries);
@@ -104,9 +139,8 @@ export class PiSessionFactory {
 
     const { session } = await createAgentSession({
       modelRuntime: this.runtime,
-      ...(!configurationAlreadyRecorded
-        ? { model, thinkingLevel: this.config.model.reasoning }
-        : {}),
+      model,
+      ...(!configurationAlreadyRecorded ? { thinkingLevel: this.config.model.reasoning } : {}),
       resourceLoader,
       sessionManager,
       settingsManager,

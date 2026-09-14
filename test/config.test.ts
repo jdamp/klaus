@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseConfig, publicConfig } from "../src/config.js";
+import { assertAbsoluteConfiguredPaths, parseConfig, publicConfig } from "../src/config.js";
 import { readSecret, SecretRedactor } from "../src/security/secrets.js";
 
 function validYaml(root: string): string {
@@ -38,6 +38,19 @@ describe("configuration and secrets", () => {
     expect(config.mcp[0]?.id).toBe("home");
     expect(config.mcp[0]?.tools).toBeUndefined();
     expect(() => parseConfig("telegram: {}")).toThrow();
+  });
+
+  it("normalizes an optional system prompt file and keeps its contents out of public config", () => {
+    const config = parseConfig(
+      validYaml("/tmp/klaus").replace(
+        "data:",
+        "agent:\n  systemPromptFile: prompts/AGENTS.md\ndata:",
+      ),
+    );
+
+    expect(config.agent.systemPromptFile).toBe(join(process.cwd(), "prompts/AGENTS.md"));
+    expect(() => assertAbsoluteConfiguredPaths(config)).not.toThrow();
+    expect(JSON.stringify(publicConfig(config))).not.toContain("prompt contents");
   });
 
   it("distinguishes unrestricted, restricted, and disabled MCP tool exposure", () => {

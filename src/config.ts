@@ -40,6 +40,11 @@ const configSchema = z
       allowedChats: z.array(decimalId).min(1),
       pollingTimeoutSeconds: z.number().int().min(1).max(50).default(30),
     }),
+    agent: z
+      .object({
+        systemPromptFile: pathValue.optional(),
+      })
+      .default({}),
     model: z.object({
       provider: z.string().min(1),
       id: z.string().min(1),
@@ -96,6 +101,7 @@ export function assertAbsoluteConfiguredPaths(config: AppConfig): void {
   const paths = [
     config.telegram.tokenFile,
     config.model.authPath,
+    ...(config.agent.systemPromptFile ? [config.agent.systemPromptFile] : []),
     config.data.directory,
     ...config.skills.paths,
     ...config.mcp.flatMap((server) => (server.tokenFile ? [server.tokenFile] : [])),

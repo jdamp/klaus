@@ -73,5 +73,11 @@ If a migration is not backward-compatible:
 6. Deploy the previous image and configuration against those restored volumes.
 7. Verify readiness and perform the staged authorization and delivery checks.
 
+A release that changes Telegram commands also changes command metadata stored by Telegram outside
+the application volumes. Before rolling back to an image that does not synchronize or implement the
+new catalogue, use BotFather to restore the previous default, private-chat, and group-chat command
+scopes, or delete those scopes. Otherwise Telegram can continue advertising commands the rolled-back
+binary cannot handle. This metadata cleanup does not alter chat authorization.
+
 Never copy only the main SQLite file from a running WAL database. Use the application backup
 command so committed WAL pages are included.

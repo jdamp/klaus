@@ -8,6 +8,7 @@ import type { AppConfig } from "../config.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import type { AppDatabase } from "../persistence/database.js";
 import {
+  ChatRepository,
   OutboxRepository,
   SessionEntryRepository,
   ToolAuditRepository,
@@ -16,6 +17,11 @@ import {
 import type { AcceptedTelegramInput } from "../telegram/types.js";
 import type { KeyedQueue } from "../dispatch/keyed-queue.js";
 import type { TelegramPoller } from "../telegram/poller.js";
+import type {
+  AvailableModel,
+  SessionStatus,
+  TelegramSessionControl,
+} from "../telegram/command-handler.js";
 
 export class TelegramRuntimeComponent implements ServiceComponent {
   readonly name = "telegram";
@@ -86,16 +92,18 @@ export class CapabilityComponent implements ServiceComponent {
   }
 }
 
-export class SessionComponent implements ServiceComponent {
+export class SessionComponent implements ServiceComponent, TelegramSessionControl {
   readonly name = "sessions";
   #registry?: SessionRegistry;
   #handler?: AgentTurnHandler;
+  #chats?: ChatRepository;
 
   constructor(
     private readonly config: AppConfig,
     private readonly runtime: ModelRuntime,
     private readonly database: AppDatabase,
     private readonly capabilities: McpRegistry,
+    private readonly systemPrompt?: string,
   ) {}
 
   start(signal: AbortSignal): Promise<void> {
@@ -104,16 +112,113 @@ export class SessionComponent implements ServiceComponent {
       this.runtime,
       new SessionEntryRepository(this.database),
       this.capabilities.piTools(),
+      this.systemPrompt,
     );
     this.#registry = new SessionRegistry(factory);
+    this.#chats = new ChatRepository(this.database);
     signal.addEventListener("abort", () => void this.#registry?.abortAll(), { once: true });
-    this.#handler = new AgentTurnHandler(this.#registry, new OutboxRepository(this.database));
+    this.#handler = new AgentTurnHandler(
+      this.#registry,
+      new OutboxRepository(this.database),
+      this.#chats,
+    );
     return Promise.resolve();
   }
 
   handle(input: AcceptedTelegramInput, sessionId: string): Promise<void> {
     if (!this.#handler) return Promise.reject(new Error("Session component is not started"));
     return this.#handler.handle(input, sessionId);
+  }
+
+  async status(chatId: string, sessionId: string): Promise<SessionStatus> {
+    const managed = await this.#get(chatId, sessionId);
+    const model = managed.session.model;
+    const preferredModel = this.#chats?.modelPreference(chatId);
+    return {
+      ...(model ? { model: { provider: model.provider, id: model.id } } : {}),
+      thinkingLevel: managed.session.thinkingLevel,
+      stats: managed.session.getSessionStats(),
+      ...(preferredModel ? { preferredModel } : {}),
+    };
+  }
+
+  async availableModels(refresh: boolean): Promise<{ models: AvailableModel[]; warning?: string }> {
+    let warning: string | undefined;
+    if (refresh) {
+      try {
+        const result = await this.runtime.refresh({
+          allowNetwork: true,
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (result.aborted) warning = "Model refresh timed out; showing cached models.";
+        else if (result.errors.size > 0)
+          warning = "Some model catalogues could not refresh; showing available cached models.";
+      } catch {
+        warning = "Model refresh failed; showing cached models.";
+      }
+    }
+    let available;
+    try {
+      available = await this.runtime.getAvailable(undefined, {
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      available = this.runtime.getAvailableSnapshot();
+      warning ??= "Model availability check failed; showing cached models.";
+    }
+    const models = available
+      .map((model) => ({ provider: model.provider, id: model.id }))
+      .sort((left, right) =>
+        `${left.provider}/${left.id}`.localeCompare(`${right.provider}/${right.id}`),
+      );
+    return { models, ...(warning ? { warning } : {}) };
+  }
+
+  async selectModel(chatId: string, sessionId: string, reference: string): Promise<AvailableModel> {
+    const { models } = await this.availableModels(false);
+    const normalized = reference.trim().toLowerCase();
+    const matches = models.filter(
+      (model) => `${model.provider}/${model.id}`.toLowerCase() === normalized,
+    );
+    const match = matches[0];
+    if (matches.length !== 1 || !match) throw new Error(`Model is not available: ${reference}`);
+    const selected = this.runtime.getModel(match.provider, match.id);
+    if (!selected) throw new Error(`Model is not available: ${reference}`);
+    const managed = await this.#get(chatId, sessionId);
+    await managed.session.setModel(selected);
+    managed.persist();
+    this.#chats?.setModelPreference(chatId, selected.provider, selected.id);
+    return { provider: selected.provider, id: selected.id };
+  }
+
+  async compact(chatId: string, sessionId: string): Promise<"compacted" | "nothing" | "cancelled"> {
+    const managed = await this.#get(chatId, sessionId);
+    try {
+      await managed.session.compact();
+      managed.persist();
+      return "compacted";
+    } catch (error) {
+      if (this.#registry?.consumeUserCancellation(sessionId)) {
+        managed.persist();
+        return "cancelled";
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "Already compacted" || message === "Nothing to compact (session too small)") {
+        return "nothing";
+      }
+      throw error;
+    }
+  }
+
+  abortCurrent(sessionId: string): Promise<boolean> {
+    return this.#registry?.abortForUser(sessionId) ?? Promise.resolve(false);
+  }
+
+  #get(chatId: string, sessionId: string) {
+    if (!this.#registry || !this.#chats) {
+      return Promise.reject(new Error("Session component is not started"));
+    }
+    return this.#registry.get(sessionId, this.#chats.modelPreference(chatId));
   }
 
   async stop(): Promise<void> {

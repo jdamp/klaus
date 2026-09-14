@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { UserCancelledTurnError } from "../src/agent/turn.js";
 import { KeyedQueue } from "../src/dispatch/keyed-queue.js";
 import { AppDatabase } from "../src/persistence/database.js";
 import {
@@ -75,6 +76,61 @@ describe("Telegram HTTP client", () => {
       signal: controller.signal,
     });
   });
+
+  it("registers commands, answers callbacks, and sends inline keyboards", async () => {
+    const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body");
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const method = url.split("/").pop()!;
+      requests.push({ method, body: JSON.parse(init.body) as Record<string, unknown> });
+      const result =
+        method === "sendMessage" ? { message_id: 7 } : method === "getUpdates" ? [] : true;
+      return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
+    }) as typeof fetch;
+    const client = new TelegramHttpClient("token", fetcher);
+    const keyboard = {
+      inline_keyboard: [[{ text: "Model", callback_data: "k:model:s:test" }]],
+    };
+
+    await client.setMyCommands([{ command: "status", description: "Show status" }], {
+      type: "all_private_chats",
+    });
+    await client.answerCallbackQuery("callback", "Selected");
+    expect(await client.sendMessage("1", "Choose", "5", undefined, keyboard)).toBe("7");
+    await client.getUpdates(10, 30);
+
+    expect(requests).toEqual([
+      {
+        method: "setMyCommands",
+        body: {
+          commands: [{ command: "status", description: "Show status" }],
+          scope: { type: "all_private_chats" },
+        },
+      },
+      {
+        method: "answerCallbackQuery",
+        body: { callback_query_id: "callback", text: "Selected" },
+      },
+      {
+        method: "sendMessage",
+        body: {
+          chat_id: "1",
+          text: "Choose",
+          reply_parameters: { message_id: "5" },
+          reply_markup: keyboard,
+        },
+      },
+      {
+        method: "getUpdates",
+        body: {
+          offset: 10,
+          timeout: 30,
+          allowed_updates: ["message", "callback_query"],
+        },
+      },
+    ]);
+  });
 });
 
 describe("Telegram admission", () => {
@@ -147,8 +203,99 @@ describe("Telegram admission", () => {
         }),
         policy,
         bot,
-      )?.command,
-    ).toBe("new");
+      ),
+    ).toMatchObject({ kind: "command", command: { name: "new" } });
+  });
+
+  it("parses private commands and rejects commands addressed to another bot", () => {
+    const privateCommand = admitUpdate(
+      update({
+        message: {
+          ...update().message!,
+          text: "/MODEL OpenAI/GPT",
+          entities: [{ type: "bot_command", offset: 0, length: 6 }],
+        },
+      }),
+      policy,
+      bot,
+    );
+    expect(privateCommand).toMatchObject({
+      kind: "command",
+      command: { name: "model", arguments: "OpenAI/GPT" },
+    });
+    expect(
+      admitUpdate(
+        update({
+          message: {
+            message_id: 5,
+            from: { id: 1 },
+            chat: { id: -100, type: "group" },
+            text: "/status@other_bot",
+            entities: [{ type: "bot_command", offset: 0, length: 17 }],
+          },
+        }),
+        policy,
+        bot,
+      ),
+    ).toBeUndefined();
+    expect(
+      admitUpdate(
+        update({
+          message: {
+            ...update().message!,
+            text: "/missing",
+            entities: [{ type: "bot_command", offset: 0, length: 8 }],
+          },
+        }),
+        policy,
+        bot,
+      ),
+    ).toMatchObject({ kind: "command", command: { name: "unknown", rawName: "missing" } });
+  });
+
+  it("authorizes only valid callbacks from this bot", () => {
+    const callback = {
+      update_id: 30,
+      callback_query: {
+        id: "callback",
+        from: { id: 1 },
+        data: "k:model:p:1",
+        message: {
+          message_id: 8,
+          from: { id: 99, is_bot: true },
+          chat: { id: -100, type: "group" as const },
+          text: "models",
+        },
+      },
+    };
+    expect(admitUpdate(callback, policy, bot)).toMatchObject({
+      kind: "callback",
+      callbackQueryId: "callback",
+      chatId: "-100",
+    });
+    expect(
+      admitUpdate(
+        {
+          ...callback,
+          callback_query: { ...callback.callback_query, from: { id: 3 } },
+        },
+        policy,
+        bot,
+      ),
+    ).toBeUndefined();
+    expect(
+      admitUpdate(
+        {
+          ...callback,
+          callback_query: {
+            ...callback.callback_query,
+            message: { ...callback.callback_query.message, from: { id: 98, is_bot: true } },
+          },
+        },
+        policy,
+        bot,
+      ),
+    ).toBeUndefined();
   });
 
   it("ignores edited and bot-authored updates", () => {
@@ -202,6 +349,14 @@ describe("Telegram dispatch", () => {
       nextQueue,
       typing(),
       async () => undefined,
+      {
+        handle: async (input) => {
+          if (input.kind === "command" && input.command.name === "new") {
+            chats.newSession(input.chatId);
+          }
+        },
+        stop: async () => undefined,
+      },
     );
     await nextRouter.route(newCommand, bot);
     await nextQueue.close();
@@ -266,6 +421,147 @@ describe("Telegram dispatch", () => {
     expect(actions).toEqual(["1:typing", "-100:typing", "1:typing"]);
     releaseOther.resolve();
     await queue.close();
+    database.close();
+  });
+
+  it("deduplicates authorized callbacks while acknowledging redelivery", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const queue = new KeyedQueue();
+    let handled = 0;
+    let acknowledged = 0;
+    const router = new TelegramRouter(
+      policy,
+      new UpdateRepository(database),
+      new ChatRepository(database),
+      queue,
+      typing(),
+      async () => undefined,
+      {
+        handle: async () => {
+          handled += 1;
+        },
+        stop: async () => undefined,
+      },
+      async () => {
+        acknowledged += 1;
+      },
+    );
+    const callback: TelegramUpdate = {
+      update_id: 31,
+      callback_query: {
+        id: "query",
+        from: { id: 1 },
+        data: "k:model:p:0",
+        message: {
+          message_id: 9,
+          from: { id: 99, is_bot: true },
+          chat: { id: -100, type: "group" },
+          text: "models",
+        },
+      },
+    };
+
+    expect(await router.route(callback, bot)).toBe(true);
+    expect(await router.route(callback, bot)).toBe(false);
+    await queue.close();
+    await Promise.resolve();
+    expect({ handled, acknowledged }).toEqual({ handled: 1, acknowledged: 2 });
+    database.close();
+  });
+
+  it("routes stop immediately outside queued work and records user cancellation", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const updates = new UpdateRepository(database);
+    const chats = new ChatRepository(database);
+    const queue = new KeyedQueue();
+    const started = deferred();
+    const release = deferred();
+    let stopped = false;
+    const router = new TelegramRouter(
+      policy,
+      updates,
+      chats,
+      queue,
+      typing(),
+      async () => {
+        started.resolve();
+        await release.promise;
+        throw new UserCancelledTurnError();
+      },
+      {
+        handle: async () => undefined,
+        stop: async () => {
+          stopped = true;
+          release.resolve();
+        },
+      },
+    );
+
+    await router.route(update(), bot);
+    await started.promise;
+    await router.route(
+      update({
+        update_id: 11,
+        message: {
+          ...update().message!,
+          text: "/stop",
+          entities: [{ type: "bot_command", offset: 0, length: 5 }],
+        },
+      }),
+      bot,
+    );
+    expect(stopped).toBe(true);
+    await queue.close();
+    expect(
+      database.connection.prepare("SELECT state FROM telegram_updates WHERE update_id='10'").get(),
+    ).toMatchObject({ state: "cancelled" });
+    expect(
+      database.connection.prepare("SELECT state FROM telegram_updates WHERE update_id='11'").get(),
+    ).toMatchObject({ state: "complete" });
+    database.close();
+  });
+
+  it("resolves the active session after a queued new command", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const chats = new ChatRepository(database);
+    const oldSession = chats.ensure("1", "private");
+    const queue = new KeyedQueue();
+    const seen: string[] = [];
+    const router = new TelegramRouter(
+      policy,
+      new UpdateRepository(database),
+      chats,
+      queue,
+      typing(),
+      async (_input, sessionId) => {
+        seen.push(sessionId);
+      },
+      {
+        handle: async (input) => {
+          if (input.kind === "command" && input.command.name === "new")
+            chats.newSession(input.chatId);
+        },
+        stop: async () => undefined,
+      },
+    );
+    await router.route(
+      update({
+        update_id: 20,
+        message: {
+          ...update().message!,
+          text: "/new",
+          entities: [{ type: "bot_command", offset: 0, length: 4 }],
+        },
+      }),
+      bot,
+    );
+    await router.route(update({ update_id: 21 }), bot);
+    await queue.close();
+    expect(seen).toEqual([chats.activeSession("1")]);
+    expect(seen[0]).not.toBe(oldSession);
     database.close();
   });
 
@@ -357,6 +653,63 @@ describe("Telegram dispatch", () => {
 });
 
 describe("Telegram long polling", () => {
+  it("synchronizes all command scopes before polling", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const scopes: string[] = [];
+    const external = new AbortController();
+    const api: TelegramApi = {
+      getMe: async () => bot,
+      setMyCommands: async (commands, scope) => {
+        expect(commands.map((command) => command.command)).toEqual([
+          "start",
+          "status",
+          "model",
+          "compact",
+          "stop",
+          "new",
+        ]);
+        scopes.push(scope.type);
+      },
+      getUpdates: async (_offset, _timeout, signal) => {
+        await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve()));
+        return [];
+      },
+      sendMessage: async () => "1",
+      sendChatAction: async () => undefined,
+      answerCallbackQuery: async () => undefined,
+    };
+    const poller = new TelegramPoller(api, new StateRepository(database), 1, async () => undefined);
+    await poller.start(external.signal);
+    external.abort();
+    await poller.stop();
+    expect(scopes).toEqual(["default", "all_private_chats", "all_group_chats"]);
+    database.close();
+  });
+
+  it("fails startup visibly when command synchronization fails", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    let polls = 0;
+    const api: TelegramApi = {
+      getMe: async () => bot,
+      setMyCommands: async (_commands, scope) => {
+        if (scope.type === "all_private_chats") throw new Error("registration failed");
+      },
+      getUpdates: async () => {
+        polls += 1;
+        return [];
+      },
+      sendMessage: async () => "1",
+      sendChatAction: async () => undefined,
+      answerCallbackQuery: async () => undefined,
+    };
+    const poller = new TelegramPoller(api, new StateRepository(database), 1, async () => undefined);
+    await expect(poller.start(new AbortController().signal)).rejects.toThrow("registration failed");
+    expect(polls).toBe(0);
+    database.close();
+  });
+
   it("resumes from and advances the durable offset", async () => {
     const database = new AppDatabase(":memory:");
     database.migrate();
@@ -365,12 +718,14 @@ describe("Telegram long polling", () => {
     const offsets: number[] = [];
     const api: TelegramApi = {
       getMe: async () => bot,
+      setMyCommands: async () => undefined,
       getUpdates: async (offset) => {
         offsets.push(offset);
         return [update({ update_id: 9 })];
       },
       sendMessage: async () => "1",
       sendChatAction: async () => undefined,
+      answerCallbackQuery: async () => undefined,
     };
     const poller = new TelegramPoller(api, state, 1, async () => undefined);
     expect(await poller.pollOnce()).toBe(1);

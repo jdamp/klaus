@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
+import { isInlineKeyboardMarkup, type TelegramInlineKeyboardMarkup } from "../telegram/types.js";
 import type { AppDatabase } from "./database.js";
 
 export type AcceptedUpdate = {
@@ -62,6 +63,25 @@ export class ChatRepository {
     if (changed.changes !== 1) throw new Error(`Unknown chat: ${chatId}`);
     return sessionId;
   }
+
+  modelPreference(chatId: string): { provider: string; modelId: string } | undefined {
+    const row = this.database.connection
+      .prepare("SELECT provider,model_id FROM chat_model_preferences WHERE chat_id=?")
+      .get(chatId) as { provider: string; model_id: string } | undefined;
+    return row ? { provider: row.provider, modelId: row.model_id } : undefined;
+  }
+
+  setModelPreference(chatId: string, provider: string, modelId: string): void {
+    const changed = this.database.connection
+      .prepare(
+        `INSERT INTO chat_model_preferences(chat_id,provider,model_id,updated_at)
+         VALUES (?,?,?,?)
+         ON CONFLICT(chat_id) DO UPDATE SET
+           provider=excluded.provider,model_id=excluded.model_id,updated_at=excluded.updated_at`,
+      )
+      .run(chatId, provider, modelId, new Date().toISOString());
+    if (changed.changes !== 1) throw new Error(`Could not store model preference: ${chatId}`);
+  }
 }
 
 export class UpdateRepository {
@@ -85,7 +105,11 @@ export class UpdateRepository {
     return result.changes === 1;
   }
 
-  finish(updateId: string, state: "complete" | "failed" | "indeterminate", failure?: string): void {
+  finish(
+    updateId: string,
+    state: "complete" | "failed" | "cancelled" | "indeterminate",
+    failure?: string,
+  ): void {
     this.database.connection
       .prepare(
         "UPDATE telegram_updates SET state=?,failure=?,completed_at=? WHERE update_id=? AND state='claimed'",
@@ -189,6 +213,7 @@ export type OutboxDraft = {
   replyToMessageId?: string;
   sequence: number;
   text: string;
+  replyMarkup?: TelegramInlineKeyboardMarkup;
   availableAt?: Date;
 };
 
@@ -198,6 +223,7 @@ export type LeasedOutboxMessage = {
   replyToMessageId?: string;
   sequence: number;
   text: string;
+  replyMarkup?: TelegramInlineKeyboardMarkup;
   attempts: number;
 };
 
@@ -205,11 +231,14 @@ export class OutboxRepository {
   constructor(private readonly database: AppDatabase) {}
 
   enqueue(draft: OutboxDraft): boolean {
+    if (draft.replyMarkup && !isInlineKeyboardMarkup(draft.replyMarkup)) {
+      throw new Error("Invalid Telegram inline keyboard");
+    }
     const result = this.database.connection
       .prepare(
         `INSERT OR IGNORE INTO outbox_messages(
-          id,dedupe_key,chat_id,reply_to_message_id,sequence,text,state,available_at,created_at
-        ) VALUES (?,?,?,?,?,?,'pending',?,?)`,
+          id,dedupe_key,chat_id,reply_to_message_id,sequence,text,reply_markup_json,state,available_at,created_at
+        ) VALUES (?,?,?,?,?,?,?,'pending',?,?)`,
       )
       .run(
         draft.id ?? randomUUID(),
@@ -218,6 +247,7 @@ export class OutboxRepository {
         draft.replyToMessageId ?? null,
         draft.sequence,
         draft.text,
+        draft.replyMarkup ? JSON.stringify(draft.replyMarkup) : null,
         (draft.availableAt ?? new Date()).toISOString(),
         new Date().toISOString(),
       );
@@ -234,7 +264,7 @@ export class OutboxRepository {
         .run(now.toISOString());
       const row = this.database.connection
         .prepare(
-          `SELECT id,chat_id,reply_to_message_id,sequence,text,attempts
+          `SELECT id,chat_id,reply_to_message_id,sequence,text,reply_markup_json,attempts
            FROM outbox_messages
            WHERE state='pending' AND available_at<=?
            ORDER BY created_at,sequence LIMIT 1`,
@@ -246,6 +276,7 @@ export class OutboxRepository {
             reply_to_message_id: string | null;
             sequence: number;
             text: string;
+            reply_markup_json: string | null;
             attempts: number;
           }
         | undefined;
@@ -265,12 +296,21 @@ export class OutboxRepository {
         ...(row.reply_to_message_id ? { replyToMessageId: row.reply_to_message_id } : {}),
         sequence: row.sequence,
         text: row.text,
+        ...(row.reply_markup_json
+          ? { replyMarkup: this.#parseReplyMarkup(row.reply_markup_json) }
+          : {}),
         attempts: row.attempts + 1,
       };
     } catch (error) {
       this.database.connection.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  #parseReplyMarkup(serialized: string): TelegramInlineKeyboardMarkup {
+    const parsed: unknown = JSON.parse(serialized);
+    if (!isInlineKeyboardMarkup(parsed)) throw new Error("Invalid stored Telegram inline keyboard");
+    return parsed;
   }
 
   sent(id: string, telegramMessageId: string): void {

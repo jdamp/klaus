@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { AgentTurnHandler } from "../src/agent/turn.js";
+import { AgentTurnHandler, UserCancelledTurnError } from "../src/agent/turn.js";
 import { AppDatabase } from "../src/persistence/database.js";
 import { OutboxRepository } from "../src/persistence/repositories.js";
 import type { AcceptedTelegramInput } from "../src/telegram/types.js";
 
 const input: AcceptedTelegramInput = {
+  kind: "message",
   updateId: "1",
   chatId: "10",
   chatType: "private",
@@ -29,6 +30,7 @@ describe("agent turn translation", () => {
       ],
     };
     const registry = {
+      consumeUserCancellation: () => false,
       get: async () => ({
         session,
         persist: () => {
@@ -48,11 +50,45 @@ describe("agent turn translation", () => {
     database.close();
   });
 
+  it("persists but does not answer a user-cancelled turn", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    let persisted = false;
+    const registry = {
+      consumeUserCancellation: () => true,
+      get: async () => ({
+        session: {
+          prompt: async () => undefined,
+          messages: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "partial" }],
+              stopReason: "aborted",
+            },
+          ],
+        },
+        persist: () => {
+          persisted = true;
+        },
+        dispose: () => undefined,
+      }),
+    };
+    const handler = new AgentTurnHandler(registry as never, new OutboxRepository(database));
+
+    await expect(handler.handle(input, "session")).rejects.toBeInstanceOf(UserCancelledTurnError);
+    expect(persisted).toBe(true);
+    expect(
+      database.connection.prepare("SELECT COUNT(*) AS count FROM outbox_messages").get(),
+    ).toMatchObject({ count: 0 });
+    database.close();
+  });
+
   it("queues a safe error without recording a successful turn", async () => {
     const database = new AppDatabase(":memory:");
     database.migrate();
     let persisted = false;
     const registry = {
+      consumeUserCancellation: () => false,
       get: async () => ({
         session: {
           prompt: async () => {

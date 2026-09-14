@@ -4,6 +4,10 @@ telegram:
   allowedChats: ["111111111"]
   pollingTimeoutSeconds: 1
 
+# Optional: replace the built-in household prompt with an explicit UTF-8 file.
+# agent:
+#   systemPromptFile: /etc/klaus-agent/AGENTS.md
+
 model:
   provider: openai-codex
   id: gpt-5.4

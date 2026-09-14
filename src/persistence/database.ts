@@ -65,6 +65,31 @@ const migrations = [
     );
     CREATE INDEX IF NOT EXISTS outbox_ready_idx
       ON outbox_messages(state, available_at, sequence);`,
+  `CREATE TABLE chat_model_preferences (
+      chat_id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(chat_id)
+    );
+    ALTER TABLE outbox_messages ADD COLUMN reply_markup_json TEXT;
+    CREATE TABLE telegram_updates_v2 (
+      update_id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('claimed','complete','failed','cancelled','indeterminate')),
+      failure TEXT,
+      received_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+    INSERT INTO telegram_updates_v2(
+      update_id,chat_id,sender_id,message_id,text,state,failure,received_at,completed_at
+    ) SELECT update_id,chat_id,sender_id,message_id,text,state,failure,received_at,completed_at
+      FROM telegram_updates;
+    DROP TABLE telegram_updates;
+    ALTER TABLE telegram_updates_v2 RENAME TO telegram_updates;`,
 ] as const;
 
 export class AppDatabase {

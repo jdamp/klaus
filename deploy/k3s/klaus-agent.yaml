@@ -15,6 +15,9 @@ data:
       allowedUsers: ["111111111", "222222222"]
       allowedChats: ["111111111", "222222222", "-1003333333333"]
       pollingTimeoutSeconds: 30
+    # Optional: mount AGENTS.md through this ConfigMap and uncomment to replace the built-in prompt.
+    # agent:
+    #   systemPromptFile: /etc/klaus-agent/AGENTS.md
     model:
       provider: openai-codex
       id: gpt-5.4

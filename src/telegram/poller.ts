@@ -1,6 +1,7 @@
 import type { StateRepository } from "../persistence/repositories.js";
 import type { ServiceComponent } from "../app/lifecycle.js";
-import type { TelegramApi } from "./client.js";
+import { TELEGRAM_COMMANDS } from "./commands.js";
+import type { TelegramApi, TelegramBotCommandScope } from "./client.js";
 import type { BotIdentity, TelegramUpdate } from "./types.js";
 
 export class TelegramPoller implements ServiceComponent {
@@ -23,6 +24,18 @@ export class TelegramPoller implements ServiceComponent {
 
   async start(signal: AbortSignal): Promise<void> {
     this.#identity = await this.api.getMe(signal);
+    const scopes: TelegramBotCommandScope[] = [
+      { type: "default" },
+      { type: "all_private_chats" },
+      { type: "all_group_chats" },
+    ];
+    for (const scope of scopes) {
+      await this.api.setMyCommands(
+        TELEGRAM_COMMANDS.map(({ name, description }) => ({ command: name, description })),
+        scope,
+        signal,
+      );
+    }
     this.#controller = new AbortController();
     signal.addEventListener("abort", () => this.#controller?.abort(), { once: true });
     this.#loop = this.#run(this.#controller.signal);

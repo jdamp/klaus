@@ -9,7 +9,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { HOUSEHOLD_SYSTEM_PROMPT, PiSessionFactory } from "../src/agent/pi-runtime.js";
+import {
+  HOUSEHOLD_SYSTEM_PROMPT,
+  loadHouseholdSystemPrompt,
+  PiSessionFactory,
+} from "../src/agent/pi-runtime.js";
 import { SessionRegistry } from "../src/agent/session-registry.js";
 import { parseConfig } from "../src/config.js";
 import { AppDatabase } from "../src/persistence/database.js";
@@ -72,6 +76,102 @@ describe("Pi runtime adapter", () => {
     database.close();
   });
 
+  it("replaces the built-in prompt with an explicitly configured prompt file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "klaus-prompt-"));
+    const promptPath = join(root, "AGENTS.md");
+    const customPrompt = "You are the carefully configured household assistant.";
+    await writeFile(promptPath, customPrompt);
+    const config = parseConfig(
+      yaml(root).replace("data:", `agent:\n  systemPromptFile: ${promptPath}\ndata:`),
+    );
+    const loadedPrompt = await loadHouseholdSystemPrompt(config);
+    expect(loadedPrompt).toBe(customPrompt);
+
+    const runtime = await ModelRuntime.create({
+      authPath: config.model.authPath,
+      refreshOnCreate: false,
+    });
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const factory = new PiSessionFactory(
+      config,
+      runtime,
+      new SessionEntryRepository(database),
+      [],
+      loadedPrompt,
+    );
+    const managed = await factory.create("44444444-4444-4444-8444-444444444444");
+    expect(managed.session.agent.state.systemPrompt).toContain(customPrompt);
+    expect(managed.session.agent.state.systemPrompt).not.toContain(
+      "You are a private household assistant responding in a Telegram chat.",
+    );
+    managed.dispose();
+    database.close();
+  });
+
+  it("rejects missing and empty configured prompt files", async () => {
+    const root = await mkdtemp(join(tmpdir(), "klaus-prompt-invalid-"));
+    const missing = parseConfig(
+      yaml(root).replace("data:", `agent:\n  systemPromptFile: ${join(root, "missing.md")}\ndata:`),
+    );
+    await expect(loadHouseholdSystemPrompt(missing)).rejects.toThrow("missing.md");
+
+    const directory = parseConfig(
+      yaml(root).replace("data:", `agent:\n  systemPromptFile: ${root}\ndata:`),
+    );
+    await expect(loadHouseholdSystemPrompt(directory)).rejects.toThrow(root);
+
+    const emptyPath = join(root, "empty.md");
+    await writeFile(emptyPath, " \n\t");
+    const empty = parseConfig(
+      yaml(root).replace("data:", `agent:\n  systemPromptFile: ${emptyPath}\ndata:`),
+    );
+    await expect(loadHouseholdSystemPrompt(empty)).rejects.toThrow("empty.md");
+  });
+
+  it("uses an available preferred model for new and restored sessions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "klaus-preferred-model-"));
+    const runtime = await ModelRuntime.create({
+      authPath: join(root, "auth", "auth.json"),
+      modelsStorePath: join(root, "auth", "models-store.json"),
+      refreshOnCreate: false,
+    });
+    await runtime.setRuntimeApiKey("anthropic", "test-key");
+    const available = await runtime.getAvailable("anthropic");
+    const fallback = available[0];
+    const preferred = available[1];
+    if (!fallback || !preferred) throw new Error("Expected at least two built-in Anthropic models");
+    const config = parseConfig(
+      yaml(root)
+        .replace("provider: openai-codex", "provider: anthropic")
+        .replace("id: gpt-5.4", `id: ${fallback.id}`),
+    );
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const factory = new PiSessionFactory(config, runtime, new SessionEntryRepository(database));
+    const sessionId = "22222222-2222-4222-8222-222222222222";
+    const first = await factory.create(sessionId, {
+      provider: preferred.provider,
+      modelId: preferred.id,
+    });
+    expect(first.session.model?.id).toBe(preferred.id);
+    first.persist();
+    first.dispose();
+    const restored = await factory.create(sessionId, {
+      provider: preferred.provider,
+      modelId: preferred.id,
+    });
+    expect(restored.session.model?.id).toBe(preferred.id);
+    restored.dispose();
+    const unavailable = await factory.create("33333333-3333-4333-8333-333333333333", {
+      provider: "anthropic",
+      modelId: "missing-model",
+    });
+    expect(unavailable.session.model?.id).toBe(fallback.id);
+    unavailable.dispose();
+    database.close();
+  });
+
   it("isolates and evicts cached chat sessions", async () => {
     const disposed: string[] = [];
     const aborted: string[] = [];
@@ -98,6 +198,42 @@ describe("Pi runtime adapter", () => {
     expect(disposed).toEqual(["one"]);
     registry.dispose();
     expect(disposed).toEqual(["one", "two"]);
+  });
+
+  it("forwards model preferences and targets only active cached sessions for user abort", async () => {
+    const created: Array<{ id: string; preferred?: { provider: string; modelId: string } }> = [];
+    let idle = false;
+    let aborted = 0;
+    const factory = {
+      async create(id: string, preferred?: { provider: string; modelId: string }) {
+        created.push({ id, ...(preferred ? { preferred } : {}) });
+        return {
+          session: {
+            get isIdle() {
+              return idle;
+            },
+          } as never,
+          abort: async () => {
+            aborted += 1;
+            idle = true;
+          },
+          persist() {},
+          dispose() {},
+        };
+      },
+    };
+    const registry = new SessionRegistry(factory);
+    await registry.get("one", { provider: "backend", modelId: "selected" });
+
+    expect(created).toEqual([
+      { id: "one", preferred: { provider: "backend", modelId: "selected" } },
+    ]);
+    expect(await registry.abortForUser("missing")).toBe(false);
+    expect(await registry.abortForUser("one")).toBe(true);
+    expect(aborted).toBe(1);
+    expect(registry.consumeUserCancellation("one")).toBe(true);
+    expect(registry.consumeUserCancellation("one")).toBe(false);
+    registry.dispose();
   });
 
   it("uses Pi compaction entries to bound old context while retaining a structured tool tail", () => {

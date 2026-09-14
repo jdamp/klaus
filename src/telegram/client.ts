@@ -1,9 +1,18 @@
-import type { BotIdentity, TelegramUpdate } from "./types.js";
+import type { BotIdentity, TelegramInlineKeyboardMarkup, TelegramUpdate } from "./types.js";
+
+export type TelegramBotCommand = { command: string; description: string };
+export type TelegramBotCommandScope =
+  { type: "default" } | { type: "all_private_chats" } | { type: "all_group_chats" };
 
 type TelegramEnvelope<T> = { ok: true; result: T } | { ok: false; description?: string };
 
 export interface TelegramApi {
   getMe(signal?: AbortSignal): Promise<BotIdentity>;
+  setMyCommands(
+    commands: readonly TelegramBotCommand[],
+    scope: TelegramBotCommandScope,
+    signal?: AbortSignal,
+  ): Promise<void>;
   getUpdates(
     offset: number,
     timeoutSeconds: number,
@@ -14,8 +23,10 @@ export interface TelegramApi {
     text: string,
     replyToMessageId?: string,
     signal?: AbortSignal,
+    replyMarkup?: TelegramInlineKeyboardMarkup,
   ): Promise<string>;
   sendChatAction(chatId: string, action: "typing", signal?: AbortSignal): Promise<void>;
+  answerCallbackQuery(callbackQueryId: string, text?: string, signal?: AbortSignal): Promise<void>;
 }
 
 export class TelegramHttpClient implements TelegramApi {
@@ -45,6 +56,14 @@ export class TelegramHttpClient implements TelegramApi {
     return { id: user.id.toString(), username: user.username };
   }
 
+  async setMyCommands(
+    commands: readonly TelegramBotCommand[],
+    scope: TelegramBotCommandScope,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.#call<boolean>("setMyCommands", { commands, scope }, signal);
+  }
+
   getUpdates(
     offset: number,
     timeoutSeconds: number,
@@ -52,7 +71,7 @@ export class TelegramHttpClient implements TelegramApi {
   ): Promise<TelegramUpdate[]> {
     return this.#call(
       "getUpdates",
-      { offset, timeout: timeoutSeconds, allowed_updates: ["message"] },
+      { offset, timeout: timeoutSeconds, allowed_updates: ["message", "callback_query"] },
       signal,
     );
   }
@@ -61,11 +80,24 @@ export class TelegramHttpClient implements TelegramApi {
     await this.#call<boolean>("sendChatAction", { chat_id: chatId, action }, signal);
   }
 
+  async answerCallbackQuery(
+    callbackQueryId: string,
+    text?: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.#call<boolean>(
+      "answerCallbackQuery",
+      { callback_query_id: callbackQueryId, ...(text ? { text } : {}) },
+      signal,
+    );
+  }
+
   async sendMessage(
     chatId: string,
     text: string,
     replyToMessageId?: string,
     signal?: AbortSignal,
+    replyMarkup?: TelegramInlineKeyboardMarkup,
   ): Promise<string> {
     const result = await this.#call<{ message_id: number }>(
       "sendMessage",
@@ -73,6 +105,7 @@ export class TelegramHttpClient implements TelegramApi {
         chat_id: chatId,
         text,
         ...(replyToMessageId ? { reply_parameters: { message_id: replyToMessageId } } : {}),
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
       },
       signal,
     );

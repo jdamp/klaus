@@ -32,6 +32,29 @@ Requirements: Node.js 22.13 or newer and npm.
 The health endpoints are `/live` and `/ready` on the configured health listener. The service
 uses Telegram long polling and needs no public ingress.
 
+## Telegram commands
+
+Klaus registers the same command menu in private and group chats. Telegram displays group commands
+with the bot username appended (for example, `/status@klaus_bot`); this is the same logical command
+as `/status` in a private chat.
+
+- `/start` shows command help. The unadvertised `/help` alias has the same behavior.
+- `/status` reports the active model and reasoning level, cumulative Pi-recorded token usage and
+  cost for the current session, and current context-window utilization. It cannot report provider
+  subscription quota, and context usage can be unknown until the first response after compaction.
+- `/model` opens a paginated inline selector containing every model Pi currently reports as
+  available from authenticated backends. `/model provider/model-id` selects an exact model directly.
+  The selection is stored per chat and survives restart, cache eviction, compaction, and `/new`.
+- `/compact` asks Pi to summarize older context. Compaction itself uses the selected model and can
+  consume additional tokens.
+- `/stop` requests cancellation of the operation active in that chat. It does not affect another
+  chat and cannot undo a tool action that completed before cancellation.
+- `/new` starts an empty conversation for the current chat while retaining its selected model.
+
+Commands are handled locally and are not sent to the conversational model as user prompts.
+Authorization still requires both an allowlisted sender and an allowlisted chat; seeing a command
+menu does not grant access.
+
 ## Finding immutable Telegram IDs
 
 Create the bot with BotFather, add it to the family group, and send one direct message and one
@@ -52,6 +75,21 @@ unset KLAUS_TELEGRAM_TOKEN
 Copy decimal IDs as quoted strings. Negative IDs identify groups/supergroups. Authorization always
 requires both an allowlisted sender ID and an allowlisted chat ID; usernames and display names are
 never used.
+
+## Household system prompt
+
+The built-in household system prompt is used by default. To replace it with operator-managed
+instructions, configure an explicit UTF-8 file path:
+
+```yaml
+agent:
+  systemPromptFile: /etc/klaus-agent/AGENTS.md
+```
+
+The file is the complete system prompt, not an addition to the built-in prompt. It is read once at
+startup; missing, unreadable, empty, or whitespace-only files prevent startup. The application does
+not automatically discover `AGENTS.md` or other context files. Mount the file read-only with
+restricted permissions and restart after changing it.
 
 ## Generic MCP configuration
 

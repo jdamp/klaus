@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createModelRuntime, providerReady } from "../agent/pi-runtime.js";
+import {
+  createModelRuntime,
+  loadHouseholdSystemPrompt,
+  providerReady,
+} from "../agent/pi-runtime.js";
 import { composeApplication } from "../app/compose.js";
 import type { Application } from "../app/lifecycle.js";
 import { parseConfig } from "../config.js";
@@ -20,6 +24,7 @@ import {
 import { SecretRedactor, readSecret } from "../security/secrets.js";
 import { Logger } from "../observability/logger.js";
 import { TelegramHttpClient } from "../telegram/client.js";
+import { TelegramCommandHandler } from "../telegram/command-handler.js";
 import { TelegramPoller } from "../telegram/poller.js";
 import { TelegramRouter } from "../telegram/router.js";
 import { TelegramTypingActivity } from "../telegram/typing-activity.js";
@@ -39,6 +44,7 @@ export type BuiltApplication = {
 
 export async function buildApplication(configPath: string): Promise<BuiltApplication> {
   const config = parseConfig(await readFile(configPath, "utf8"));
+  const systemPrompt = await loadHouseholdSystemPrompt(config);
   const telegramToken = await readSecret(config.telegram.tokenFile);
   const redactor = new SecretRedactor();
   redactor.add(telegramToken);
@@ -59,20 +65,25 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
 
   const mcp = new McpRegistry(config.mcp, new ToolAuditRepository(database), undefined, redactor);
   const capabilities = new CapabilityComponent(mcp);
-  const sessions = new SessionComponent(config, runtime, database, mcp);
+  const sessions = new SessionComponent(config, runtime, database, mcp, systemPrompt);
   const api = new TelegramHttpClient(telegramToken);
-  const delivery = new OutboxWorker(new OutboxRepository(database), api);
+  const outbox = new OutboxRepository(database);
+  const chats = new ChatRepository(database);
+  const delivery = new OutboxWorker(outbox, api);
   const queue = new KeyedQueue();
+  const commands = new TelegramCommandHandler(chats, outbox, sessions);
   const router = new TelegramRouter(
     {
       allowedUsers: new Set(config.telegram.allowedUsers),
       allowedChats: new Set(config.telegram.allowedChats),
     },
     new UpdateRepository(database),
-    new ChatRepository(database),
+    chats,
     queue,
     new TelegramTypingActivity(api),
     (input, sessionId) => sessions.handle(input, sessionId),
+    commands,
+    (callbackQueryId) => api.answerCallbackQuery(callbackQueryId),
   );
   const poller = new TelegramPoller(
     api,

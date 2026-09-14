@@ -18,11 +18,19 @@ describe("Telegram delivery", () => {
     const database = new AppDatabase(":memory:");
     database.migrate();
     const outbox = new OutboxRepository(database);
-    enqueueResponse(outbox, { updateId: "1", chatId: "-100", messageId: "7" }, "hello");
+    enqueueResponse(outbox, { updateId: "1", chatId: "-100", messageId: "7" }, "hello", {
+      inline_keyboard: [[{ text: "Choose", callback_data: "k:model:s:test" }]],
+    });
     const row = database.connection
-      .prepare("SELECT chat_id,reply_to_message_id,text FROM outbox_messages")
+      .prepare("SELECT chat_id,reply_to_message_id,text,reply_markup_json FROM outbox_messages")
       .get() as Record<string, string>;
-    expect(row).toEqual({ chat_id: "-100", reply_to_message_id: "7", text: "hello" });
+    expect(row).toEqual({
+      chat_id: "-100",
+      reply_to_message_id: "7",
+      text: "hello",
+      reply_markup_json:
+        '{"inline_keyboard":[[{"text":"Choose","callback_data":"k:model:s:test"}]]}',
+    });
     database.close();
   });
 
@@ -37,12 +45,17 @@ describe("Telegram delivery", () => {
       chatId: "1",
       sequence: 0,
       text: "hello",
+      replyMarkup: {
+        inline_keyboard: [[{ text: "Choose", callback_data: "k:model:s:test" }]],
+      },
       availableAt: now,
     });
     let calls = 0;
+    let observedMarkup: unknown;
     const worker = new OutboxWorker(outbox, {
-      async sendMessage() {
+      async sendMessage(_chat, _text, _reply, _signal, replyMarkup) {
         calls += 1;
+        observedMarkup = replyMarkup;
         if (calls === 1) throw new Error("temporary");
         return "77";
       },
@@ -53,6 +66,9 @@ describe("Telegram delivery", () => {
       .prepare("SELECT state,attempts,telegram_message_id FROM outbox_messages WHERE id='m'")
       .get() as Record<string, unknown>;
     expect(row).toMatchObject({ state: "sent", attempts: 2, telegram_message_id: "77" });
+    expect(observedMarkup).toEqual({
+      inline_keyboard: [[{ text: "Choose", callback_data: "k:model:s:test" }]],
+    });
     database.close();
   });
 });
