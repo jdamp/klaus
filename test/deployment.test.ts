@@ -18,10 +18,8 @@ describe("packaging and deployment examples", () => {
     const config = parseConfig(source);
     expect(config.telegram.allowedUsers).toHaveLength(2);
     expect(config.telegram.allowedChats).toHaveLength(3);
-    expect(config.mcp[0]).toMatchObject({
-      id: "home",
-      tools: ["get_state", "call_service"],
-    });
+    expect(config.mcp[0]).toMatchObject({ id: "home" });
+    expect(config.mcp[0]?.tools).toBeUndefined();
     expect(source).not.toMatch(/\d{8,}:[A-Za-z0-9_-]{20,}/);
     expect(source).not.toContain("Bearer ");
   });

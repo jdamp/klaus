@@ -1,8 +1,8 @@
 # Klaus Agent
 
 Klaus Agent is a private Telegram home assistant built on Pi's headless libraries. It keeps one
-durable conversation per allowlisted chat, exposes only explicitly allowlisted tools, and connects
-to home services through generic Streamable HTTP MCP servers. It does not expose Pi's coding tools
+durable conversation per allowlisted chat and connects to home services through operator-configured
+Streamable HTTP MCP servers. Configured MCP servers expose their discovered tools by default; Pi's coding tools
 or TUI.
 
 ## Local development
@@ -16,7 +16,7 @@ Requirements: Node.js 22.13 or newer and npm.
 4. Put the Telegram bot token in `.local/secrets/telegram-token`, and each optional MCP bearer
    token in its configured file. Secret files contain only the token, optionally followed by a
    newline.
-5. Replace all example Telegram IDs, MCP URLs, and MCP tool names with reviewed deployment values.
+5. Replace all example Telegram IDs and MCP URLs with reviewed deployment values.
 6. Bootstrap the Pi-owned provider credentials:
 
    ```sh
@@ -55,14 +55,27 @@ never used.
 
 ## Generic MCP configuration
 
-Each MCP entry has a stable local `id`, an HTTP(S) Streamable HTTP `url`, an optional mounted
-`tokenFile`, and an explicit list of remote `tools`. Discovered tools not in that list remain
-unavailable. The model sees namespaced names such as `home__get_state`; it never receives the
-bearer token.
+Each MCP entry has a stable local `id`, an HTTP(S) Streamable HTTP `url`, and an optional mounted
+`tokenFile`. Omitting `tools` exposes every valid tool discovered from that configured server:
 
-Start with read operations and a narrowly reviewed set of non-critical actions. The intended first
-deployment may point `home` at the existing Home Assistant MCP server, but there is no
-Home Assistant-specific code.
+```yaml
+mcp:
+  - id: home
+    url: http://home-assistant-mcp:8086/mcp
+```
+
+Set a non-empty list to restrict exposure, or an empty list to expose none:
+
+```yaml
+tools: [ha_get_state, ha_set_todo_item] # only these tools
+# tools: []                             # no tools
+```
+
+The model sees namespaced names such as `home__ha_get_state`; it never receives the bearer token.
+New tools reported by an unrestricted configured server become available after discovery or
+reconnection. Only configure endpoints whose catalogue you trust, and use the optional restriction
+when a server also exposes operations you do not want available. The intended first deployment may
+point `home` at the existing Home Assistant MCP server, but there is no Home Assistant-specific code.
 
 ## Container
 

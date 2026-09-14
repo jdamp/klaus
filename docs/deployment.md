@@ -11,8 +11,9 @@ are mounted read-only.
    `deploy/k3s/klaus-agent.yaml` with that tag or, preferably, its registry digest.
 2. Copy `deploy/k3s/secret.example.yaml` outside the repository, replace the placeholders, apply
    it, and do not commit the resulting file.
-3. Replace the example Telegram IDs, provider/model selection, MCP URL, and reviewed tool allowlist
-   in the ConfigMap.
+3. Replace the example Telegram IDs, provider/model selection, and MCP URL in the ConfigMap. An MCP
+   server with no `tools` field exposes its discovered catalogue; add a list only when you want to
+   restrict that server, or `tools: []` to expose none.
 4. Apply the workload:
 
    ```sh
@@ -49,7 +50,8 @@ rollout. Record the image digest, configuration revision, time, tester, and resu
 - [ ] An allowlisted MCP read operation succeeds and returns a bounded result.
 - [ ] Each enabled non-critical action (for example a test light) is confirmed both in Telegram and
       at the target service.
-- [ ] A discovered but unlisted MCP tool is absent from the agent and cannot be executed.
+- [ ] With `tools` omitted, the configured MCP server catalogue is exposed and a representative
+      formerly unlisted namespaced tool is available.
 - [ ] With the MCP endpoint stopped, unrelated conversation still works and health reports
       degradation.
 - [ ] After terminating the pod during a turn, the recorded update is not replayed and any

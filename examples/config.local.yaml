@@ -21,9 +21,6 @@ mcp:
   - id: home
     url: https://mcp.example.invalid/mcp
     tokenFile: .local/secrets/home-mcp-token
-    tools:
-      - get_state
-      - call_service
     timeoutMs: 15000
     maxResultBytes: 65536
 

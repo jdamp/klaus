@@ -26,7 +26,6 @@ data:
       - id: home
         url: https://mcp.example.invalid/mcp
         tokenFile: /run/secrets/home/token
-        tools: [get_state, call_service]
         timeoutMs: 15000
         maxResultBytes: 65536
     skills:

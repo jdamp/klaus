@@ -57,10 +57,8 @@ describe("generic MCP registry", () => {
     await expect(registry.call("home__light", { on: "yes" })).rejects.toThrow("Invalid");
     expect(calls).toEqual([]);
     expect(await registry.call("home__light", { on: true })).toEqual({ ok: true });
-    expect(registry.piTools().map((tool) => tool.name)).toEqual([
-      "home__light",
-      "home__surprise",
-    ]);
+    expect(registry.piTools().map((tool) => tool.name)).toEqual(["home__light", "home__surprise"]);
+    await expect(registry.call("other__light", {})).rejects.toThrow("unavailable");
     database.close();
   });
 
@@ -79,10 +77,7 @@ describe("generic MCP registry", () => {
       callTool: async () => ({ ok: true }),
     };
     const registry = new McpRegistry(
-      [
-        config({ id: "restricted", tools: ["light"] }),
-        config({ id: "disabled", tools: [] }),
-      ],
+      [config({ id: "restricted", tools: ["light"] }), config({ id: "disabled", tools: [] })],
       new ToolAuditRepository(database),
       async () => client,
     );
@@ -128,10 +123,8 @@ describe("generic MCP registry", () => {
   it("uses one generic configuration path for household service operations", async () => {
     const database = new AppDatabase(":memory:");
     database.migrate();
-    const registry = new McpRegistry(
-      [config()],
-      new ToolAuditRepository(database),
-      async () => householdMcpFixture(),
+    const registry = new McpRegistry([config()], new ToolAuditRepository(database), async () =>
+      householdMcpFixture(),
     );
     await registry.connect();
     expect(registry.names()).toEqual([
@@ -267,9 +260,7 @@ describe("generic MCP registry", () => {
       listTools: async () => ({
         tools: [
           { name: "light", inputSchema: { type: "object" as const } },
-          ...(expanded
-            ? [{ name: "vacuum", inputSchema: { type: "object" as const } }]
-            : []),
+          ...(expanded ? [{ name: "vacuum", inputSchema: { type: "object" as const } }] : []),
         ],
       }),
       callTool: async () => ({ ok: true }),
@@ -285,11 +276,7 @@ describe("generic MCP registry", () => {
     expanded = true;
     expect(await registry.reconnect("open", 1)).toBe(true);
     expect(await registry.reconnect("restricted", 1)).toBe(true);
-    expect(registry.names()).toEqual([
-      "open__light",
-      "open__vacuum",
-      "restricted__light",
-    ]);
+    expect(registry.names()).toEqual(["open__light", "open__vacuum", "restricted__light"]);
     database.close();
   });
 
