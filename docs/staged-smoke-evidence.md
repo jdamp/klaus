@@ -25,6 +25,9 @@ message bodies, entity state, credentials, and MCP results.
 - With both adults temporarily absent from the sender allowlist, their group invocations received
   no response and did not change accepted-update or outbox counts. The normal allowlist was then
   restored and readiness reconfirmed.
+- With the family group temporarily absent from the chat allowlist, an allowlisted adult's
+  entity-backed group mention received no response and did not change accepted-update, outbox, or
+  tool-execution counts. The normal allowlist was then restored and readiness reconfirmed.
 - The real MCP endpoint advertised 78 tools. The application exposed only the reviewed
   `ha_get_state`, `ha_get_todo`, and `ha_set_todo_item` tools under the `home` namespace.
 - The discovered but unlisted `ha_restart` tool was absent from the application registry.
@@ -32,14 +35,22 @@ message bodies, entity state, credentials, and MCP results.
   its response was delivered once.
 - A Telegram-requested `ha_set_todo_item` call completed successfully; its response was delivered
   once and the household operator independently observed the new item in Home Assistant.
+- With the MCP endpoint temporarily replaced by an unreachable local endpoint, readiness remained
+  true, capability health reported degradation, and an unrelated direct-chat response was
+  delivered exactly once without creating a tool execution. The real endpoint was then restored,
+  one poller was running, and every health component returned to healthy.
+- A value-based scan checked the live Telegram and Pi OAuth credentials without printing them.
+  Neither credential appeared in SQLite, tracked files, serialized public configuration, or health
+  output. The local secret and Pi-authentication directories were mode `0700`, and both credential
+  files were mode `0600` under the runtime user.
+- A watcher sent `SIGTERM` immediately after a new authorized direct-chat update entered the
+  durable `claimed` state. Shutdown left the update `indeterminate`, created no tool execution,
+  and retained one pending response. After restart, the update was not replayed, the pending
+  response was delivered once with one attempt, and all integrations returned to healthy. The
+  deterministic in-flight turn and delivery cases remain covered by the task 9.3 acceptance suite.
 
-### Remaining checks before task 9.4 completion
-
-- Verify an allowlisted adult is ignored in a temporarily non-allowlisted chat.
-- Verify a simulated MCP outage reports degraded capability health while unrelated Telegram chat
-  remains operational.
-- Complete the live credential scan and correct local Telegram secret-file permissions.
-- Decide whether to repeat the already automated interruption/recovery cases against the live bot.
+All staged checks required for this local household rollout passed. The live bot was restored with
+its reviewed MCP endpoint and one healthy Telegram poller.
 
 Adult B's private-chat check was not exercised; the household operator accepted successful group
 authorization as sufficient for this local staging run.
