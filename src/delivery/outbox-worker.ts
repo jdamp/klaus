@@ -1,6 +1,6 @@
 import type { ServiceComponent } from "../app/lifecycle.js";
 import type { OutboxRepository } from "../persistence/repositories.js";
-import type { TelegramInlineKeyboardMarkup } from "../telegram/types.js";
+import type { TelegramInlineKeyboardMarkup, TelegramParseMode } from "../telegram/types.js";
 
 export interface MessageSender {
   sendMessage(
@@ -9,6 +9,7 @@ export interface MessageSender {
     replyToMessageId?: string,
     signal?: AbortSignal,
     replyMarkup?: TelegramInlineKeyboardMarkup,
+    parseMode?: TelegramParseMode,
   ): Promise<string>;
 }
 
@@ -42,6 +43,7 @@ export class OutboxWorker implements ServiceComponent {
         message.replyToMessageId,
         signal,
         message.replyMarkup,
+        message.parseMode,
       );
       this.outbox.sent(message.id, sentId);
       this.#lastError = undefined;

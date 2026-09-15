@@ -90,6 +90,7 @@ const migrations = [
       FROM telegram_updates;
     DROP TABLE telegram_updates;
     ALTER TABLE telegram_updates_v2 RENAME TO telegram_updates;`,
+  `ALTER TABLE outbox_messages ADD COLUMN parse_mode TEXT CHECK (parse_mode IS NULL OR parse_mode='HTML');`,
 ] as const;
 
 export class AppDatabase {

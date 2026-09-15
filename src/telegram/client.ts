@@ -1,4 +1,9 @@
-import type { BotIdentity, TelegramInlineKeyboardMarkup, TelegramUpdate } from "./types.js";
+import type {
+  BotIdentity,
+  TelegramInlineKeyboardMarkup,
+  TelegramParseMode,
+  TelegramUpdate,
+} from "./types.js";
 
 export type TelegramBotCommand = { command: string; description: string };
 export type TelegramBotCommandScope =
@@ -24,6 +29,7 @@ export interface TelegramApi {
     replyToMessageId?: string,
     signal?: AbortSignal,
     replyMarkup?: TelegramInlineKeyboardMarkup,
+    parseMode?: TelegramParseMode,
   ): Promise<string>;
   sendChatAction(chatId: string, action: "typing", signal?: AbortSignal): Promise<void>;
   answerCallbackQuery(callbackQueryId: string, text?: string, signal?: AbortSignal): Promise<void>;
@@ -98,6 +104,7 @@ export class TelegramHttpClient implements TelegramApi {
     replyToMessageId?: string,
     signal?: AbortSignal,
     replyMarkup?: TelegramInlineKeyboardMarkup,
+    parseMode?: TelegramParseMode,
   ): Promise<string> {
     const result = await this.#call<{ message_id: number }>(
       "sendMessage",
@@ -106,6 +113,7 @@ export class TelegramHttpClient implements TelegramApi {
         text,
         ...(replyToMessageId ? { reply_parameters: { message_id: replyToMessageId } } : {}),
         ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+        ...(parseMode ? { parse_mode: parseMode } : {}),
       },
       signal,
     );

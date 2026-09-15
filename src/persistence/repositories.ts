@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
-import { isInlineKeyboardMarkup, type TelegramInlineKeyboardMarkup } from "../telegram/types.js";
+import {
+  isInlineKeyboardMarkup,
+  type TelegramInlineKeyboardMarkup,
+  type TelegramParseMode,
+} from "../telegram/types.js";
 import type { AppDatabase } from "./database.js";
 
 export type AcceptedUpdate = {
@@ -213,6 +217,7 @@ export type OutboxDraft = {
   replyToMessageId?: string;
   sequence: number;
   text: string;
+  parseMode?: TelegramParseMode;
   replyMarkup?: TelegramInlineKeyboardMarkup;
   availableAt?: Date;
 };
@@ -223,6 +228,7 @@ export type LeasedOutboxMessage = {
   replyToMessageId?: string;
   sequence: number;
   text: string;
+  parseMode?: TelegramParseMode;
   replyMarkup?: TelegramInlineKeyboardMarkup;
   attempts: number;
 };
@@ -237,8 +243,8 @@ export class OutboxRepository {
     const result = this.database.connection
       .prepare(
         `INSERT OR IGNORE INTO outbox_messages(
-          id,dedupe_key,chat_id,reply_to_message_id,sequence,text,reply_markup_json,state,available_at,created_at
-        ) VALUES (?,?,?,?,?,?,?,'pending',?,?)`,
+          id,dedupe_key,chat_id,reply_to_message_id,sequence,text,parse_mode,reply_markup_json,state,available_at,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,'pending',?,?)`,
       )
       .run(
         draft.id ?? randomUUID(),
@@ -247,6 +253,7 @@ export class OutboxRepository {
         draft.replyToMessageId ?? null,
         draft.sequence,
         draft.text,
+        draft.parseMode ?? null,
         draft.replyMarkup ? JSON.stringify(draft.replyMarkup) : null,
         (draft.availableAt ?? new Date()).toISOString(),
         new Date().toISOString(),
@@ -264,7 +271,7 @@ export class OutboxRepository {
         .run(now.toISOString());
       const row = this.database.connection
         .prepare(
-          `SELECT id,chat_id,reply_to_message_id,sequence,text,reply_markup_json,attempts
+          `SELECT id,chat_id,reply_to_message_id,sequence,text,parse_mode,reply_markup_json,attempts
            FROM outbox_messages
            WHERE state='pending' AND available_at<=?
            ORDER BY created_at,sequence LIMIT 1`,
@@ -276,6 +283,7 @@ export class OutboxRepository {
             reply_to_message_id: string | null;
             sequence: number;
             text: string;
+            parse_mode: TelegramParseMode | null;
             reply_markup_json: string | null;
             attempts: number;
           }
@@ -296,6 +304,7 @@ export class OutboxRepository {
         ...(row.reply_to_message_id ? { replyToMessageId: row.reply_to_message_id } : {}),
         sequence: row.sequence,
         text: row.text,
+        ...(row.parse_mode ? { parseMode: row.parse_mode } : {}),
         ...(row.reply_markup_json
           ? { replyMarkup: this.#parseReplyMarkup(row.reply_markup_json) }
           : {}),

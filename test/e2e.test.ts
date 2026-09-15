@@ -28,7 +28,7 @@ describe("reactive home-agent flow", () => {
           prompt: async () => {
             toolCalls += 1;
           },
-          messages: [{ role: "assistant", content: [{ type: "text", text: "Light is on" }] }],
+          messages: [{ role: "assistant", content: [{ type: "text", text: "**Light is on**" }] }],
         },
         persist: () => {
           persisted += 1;
@@ -70,10 +70,10 @@ describe("reactive home-agent flow", () => {
     expect(await router.route(accepted, { id: "99", username: "klaus_bot" })).toBe(false);
     await queue.close();
 
-    const sent: Array<{ chat: string; text: string }> = [];
+    const sent: Array<{ chat: string; text: string; parseMode?: string }> = [];
     const worker = new OutboxWorker(outbox, {
-      sendMessage: async (chat, text) => {
-        sent.push({ chat, text });
+      sendMessage: async (chat, text, _reply, _signal, _markup, parseMode) => {
+        sent.push({ chat, text, ...(parseMode ? { parseMode } : {}) });
         return "10";
       },
     });
@@ -81,7 +81,7 @@ describe("reactive home-agent flow", () => {
     expect({ toolCalls, persisted, sent }).toEqual({
       toolCalls: 1,
       persisted: 1,
-      sent: [{ chat: "-100", text: "Light is on" }],
+      sent: [{ chat: "-100", text: "<b>Light is on</b>", parseMode: "HTML" }],
     });
     database.close();
   });

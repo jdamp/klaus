@@ -97,7 +97,7 @@ describe("Telegram HTTP client", () => {
       type: "all_private_chats",
     });
     await client.answerCallbackQuery("callback", "Selected");
-    expect(await client.sendMessage("1", "Choose", "5", undefined, keyboard)).toBe("7");
+    expect(await client.sendMessage("1", "Choose", "5", undefined, keyboard, "HTML")).toBe("7");
     await client.getUpdates(10, 30);
 
     expect(requests).toEqual([
@@ -119,6 +119,7 @@ describe("Telegram HTTP client", () => {
           text: "Choose",
           reply_parameters: { message_id: "5" },
           reply_markup: keyboard,
+          parse_mode: "HTML",
         },
       },
       {
@@ -130,6 +131,18 @@ describe("Telegram HTTP client", () => {
         },
       },
     ]);
+  });
+
+  it("omits a parse mode for plain text", async () => {
+    let body: Record<string, unknown> | undefined;
+    const fetcher = (async (_input: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(init?.body as string) as Record<string, unknown>;
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), { status: 200 });
+    }) as typeof fetch;
+
+    await new TelegramHttpClient("token", fetcher).sendMessage("1", "Plain");
+
+    expect(body).toEqual({ chat_id: "1", text: "Plain" });
   });
 });
 

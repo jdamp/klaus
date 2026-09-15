@@ -1,6 +1,6 @@
 import type { ChatRepository, OutboxRepository } from "../persistence/repositories.js";
 import type { AcceptedTelegramInput } from "../telegram/types.js";
-import { enqueueResponse } from "../delivery/intents.js";
+import { enqueueRenderedAgentResponse, enqueueResponse } from "../delivery/intents.js";
 import type { SessionRegistry } from "./session-registry.js";
 import { extractFinalText } from "./pi-runtime.js";
 
@@ -29,7 +29,7 @@ export class AgentTurnHandler {
       const response = extractFinalText(managed.session.messages);
       if (!response) throw new Error("The model returned no final text");
       managed.persist();
-      enqueueResponse(this.outbox, input, response);
+      enqueueRenderedAgentResponse(this.outbox, input, response);
     } catch (error) {
       if (error instanceof UserCancelledTurnError) throw error;
       if (this.sessions.consumeUserCancellation(sessionId)) {

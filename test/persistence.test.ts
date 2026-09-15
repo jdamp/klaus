@@ -97,9 +97,9 @@ describe("SQLite persistence", () => {
     ).toEqual({ text: "hello", state: "complete" });
     expect(
       database.connection
-        .prepare("SELECT text,reply_markup_json FROM outbox_messages WHERE id='o'")
+        .prepare("SELECT text,parse_mode,reply_markup_json FROM outbox_messages WHERE id='o'")
         .get(),
-    ).toEqual({ text: "reply", reply_markup_json: null });
+    ).toEqual({ text: "reply", parse_mode: null, reply_markup_json: null });
     expect(
       database.connection
         .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='outbox_ready_idx'")
@@ -170,6 +170,7 @@ describe("SQLite persistence", () => {
         chatId: "1",
         sequence: 0,
         text: "x",
+        parseMode: "HTML",
         replyMarkup: {
           inline_keyboard: [[{ text: "Select", callback_data: "k:model:s:test" }]],
         },
@@ -187,12 +188,14 @@ describe("SQLite persistence", () => {
       }),
     ).toBe(false);
     const firstLease = outbox.lease(now, 1_000);
+    if (!firstLease) throw new Error("Expected an outbox lease");
     expect(firstLease).toMatchObject({
       attempts: 1,
       replyMarkup: {
         inline_keyboard: [[{ text: "Select", callback_data: "k:model:s:test" }]],
       },
     });
+    expect(firstLease.parseMode).toBe("HTML");
     outbox.retry("one", now, "temporary");
     expect(outbox.lease(now, 1_000)?.attempts).toBe(2);
     outbox.sent("one", "99");

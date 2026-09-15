@@ -42,11 +42,10 @@ describe("agent turn translation", () => {
     const handler = new AgentTurnHandler(registry as never, new OutboxRepository(database));
     await handler.handle(input, "session");
     expect(persisted).toBe(true);
-    const row = database.connection.prepare("SELECT chat_id,text FROM outbox_messages").get() as {
-      chat_id: string;
-      text: string;
-    };
-    expect(row).toEqual({ chat_id: "10", text: "Done" });
+    const row = database.connection
+      .prepare("SELECT chat_id,text,parse_mode FROM outbox_messages")
+      .get() as { chat_id: string; text: string; parse_mode: string | null };
+    expect(row).toEqual({ chat_id: "10", text: "Done", parse_mode: "HTML" });
     database.close();
   });
 
@@ -105,10 +104,11 @@ describe("agent turn translation", () => {
     const handler = new AgentTurnHandler(registry as never, new OutboxRepository(database));
     await expect(handler.handle(input, "session")).rejects.toThrow("Agent turn failed");
     expect(persisted).toBe(false);
-    const row = database.connection.prepare("SELECT text FROM outbox_messages").get() as {
-      text: string;
-    };
+    const row = database.connection
+      .prepare("SELECT text,parse_mode FROM outbox_messages")
+      .get() as { text: string; parse_mode: string | null };
     expect(row.text).not.toContain("provider secret detail");
+    expect(row.parse_mode).toBeNull();
     database.close();
   });
 });

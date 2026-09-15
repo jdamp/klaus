@@ -57,6 +57,8 @@ export type TelegramInlineKeyboardMarkup = {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 };
 
+export type TelegramParseMode = "HTML";
+
 export function isInlineKeyboardMarkup(value: unknown): value is TelegramInlineKeyboardMarkup {
   if (!value || typeof value !== "object") return false;
   const rows = (value as { inline_keyboard?: unknown }).inline_keyboard;

@@ -92,10 +92,10 @@ function fakeControl(models: AvailableModel[] = []): TelegramSessionControl & {
 
 function responses(
   database: AppDatabase,
-): Array<{ text: string; reply_markup_json: string | null }> {
+): Array<{ text: string; parse_mode: string | null; reply_markup_json: string | null }> {
   return database.connection
-    .prepare("SELECT text,reply_markup_json FROM outbox_messages ORDER BY rowid")
-    .all() as Array<{ text: string; reply_markup_json: string | null }>;
+    .prepare("SELECT text,parse_mode,reply_markup_json FROM outbox_messages ORDER BY rowid")
+    .all() as Array<{ text: string; parse_mode: string | null; reply_markup_json: string | null }>;
 }
 
 describe("Telegram local commands", () => {
@@ -129,6 +129,7 @@ describe("Telegram local commands", () => {
     await handler.handle(command("4", "status"), sessionId);
 
     const output = responses(database).map((row) => row.text);
+    expect(responses(database).every((row) => row.parse_mode === null)).toBe(true);
     expect(output[0]).toContain("/new - Start a fresh conversation");
     expect(output[1]).toBe(output[0]);
     expect(output[2]).toContain("Model: openai/gpt");
