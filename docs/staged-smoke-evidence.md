@@ -71,9 +71,10 @@ authorization as sufficient for this local staging run.
 ### Completed checks
 
 - The Deployment rolled out one ready replica with the `Recreate` strategy.
-- The non-root, read-only-root-filesystem container started with the configured `home` MCP server.
-- The application logged `runtime.started` for the authenticated `openai-codex` provider and the
-  Kubernetes readiness probe reported healthy.
+- The non-root, read-only-root-filesystem container started with the configured `home` and Kaneo
+  stdio MCP servers after the dedicated Kaneo Secret was mounted.
+- The application logged `runtime.started` for the authenticated `openai-codex` provider with both
+  MCP servers, and the Kubernetes readiness probe and capability health reported healthy.
 
 No Telegram or MCP action smoke tests have been performed against this Kubernetes deployment yet.
 The temporary image expires after 24 hours and must be replaced with a reviewed immutable registry
