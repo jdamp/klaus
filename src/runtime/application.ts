@@ -49,7 +49,13 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   const redactor = new SecretRedactor();
   redactor.add(telegramToken);
   for (const server of config.mcp) {
-    if (server.tokenFile) redactor.add(await readSecret(server.tokenFile));
+    if ("url" in server && server.tokenFile) {
+      redactor.add(await readSecret(server.tokenFile));
+    } else if ("secretEnv" in server) {
+      for (const path of Object.values(server.secretEnv)) {
+        redactor.add(await readSecret(path));
+      }
+    }
   }
   const logger = new Logger(redactor);
 

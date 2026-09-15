@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: klaus-agent
+  name: klaus
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: klaus-agent-config
-  namespace: klaus-agent
+  namespace: klaus
 data:
   config.yaml: |
     telegram:
@@ -31,6 +31,31 @@ data:
         tokenFile: /run/secrets/home/token
         timeoutMs: 15000
         maxResultBytes: 65536
+      - id: kaneo
+        command: node
+        args: [/app/node_modules/@kaneo/mcp/dist/index.js, serve]
+        env:
+          KANEO_API_URL: https://todo.mauzlab.de
+        secretEnv:
+          KANEO_API_KEY: /run/secrets/kaneo/api-key
+        tools:
+          - list_workspaces
+          - list_workspace_members
+          - list_projects
+          - get_project
+          - create_project
+          - update_project
+          - list_project_columns
+          - list_tasks
+          - get_task
+          - create_task
+          - update_task
+          - move_task
+          - update_task_status
+          - update_task_assignee
+          - update_task_due_date
+        timeoutMs: 15000
+        maxResultBytes: 65536
     skills:
       paths: []
     data:
@@ -44,7 +69,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: klaus-agent-data
-  namespace: klaus-agent
+  namespace: klaus
 spec:
   accessModes: [ReadWriteOnce]
   resources:
@@ -55,7 +80,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: klaus-agent-auth
-  namespace: klaus-agent
+  namespace: klaus
 spec:
   accessModes: [ReadWriteOnce]
   resources:
@@ -66,7 +91,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: klaus-agent
-  namespace: klaus-agent
+  namespace: klaus
 spec:
   replicas: 1
   strategy:
@@ -132,6 +157,9 @@ spec:
             - name: home-mcp-token
               mountPath: /run/secrets/home
               readOnly: true
+            - name: kaneo-api-key
+              mountPath: /run/secrets/kaneo
+              readOnly: true
             - name: data
               mountPath: /var/lib/klaus-agent
             - name: auth
@@ -152,6 +180,12 @@ spec:
             items:
               - key: home-mcp-token
                 path: token
+        - name: kaneo-api-key
+          secret:
+            secretName: klaus-agent-secrets
+            items:
+              - key: kaneo-api-key
+                path: api-key
         - name: data
           persistentVolumeClaim:
             claimName: klaus-agent-data

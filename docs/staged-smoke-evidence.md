@@ -54,3 +54,27 @@ its reviewed MCP endpoint and one healthy Telegram poller.
 
 Adult B's private-chat check was not exercised; the household operator accepted successful group
 authorization as sufficient for this local staging run.
+
+## Kubernetes test deployment — 2026-09-15 UTC
+
+- Namespace: `klaus`
+- Source: current working tree based on `f0d15f8`
+- Image: `ttl.sh/klaus-agent-3b228fd5792a4a258b21aa6de077eba1:24h`
+  (`sha256:8d53f03a0ac3ffce5115fee49e33044f3c2ebdb5d0ca76ddb621aa82d1253633`;
+  temporary test registry image)
+- Configuration and credentials: operator-local configuration and Telegram token were created as
+  namespace resources. Existing OAuth state was seeded into its persistent claim, then the temporary
+  seed Secret was deleted; none of these values are committed or reproduced here.
+- Storage: fresh `klaus-agent-data` (1Gi) and `klaus-agent-auth` (256Mi) claims, both bound using
+  `nfs-nas`.
+
+### Completed checks
+
+- The Deployment rolled out one ready replica with the `Recreate` strategy.
+- The non-root, read-only-root-filesystem container started with the configured `home` MCP server.
+- The application logged `runtime.started` for the authenticated `openai-codex` provider and the
+  Kubernetes readiness probe reported healthy.
+
+No Telegram or MCP action smoke tests have been performed against this Kubernetes deployment yet.
+The temporary image expires after 24 hours and must be replaced with a reviewed immutable registry
+image before any continued use.

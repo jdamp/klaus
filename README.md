@@ -56,27 +56,6 @@ Commands are handled locally and are not sent to the conversational model as use
 Authorization still requires both an allowlisted sender and an allowlisted chat; seeing a command
 menu does not grant access.
 
-## Finding immutable Telegram IDs
-
-Create the bot with BotFather, add it to the family group, and send one direct message and one
-explicitly addressed group message. Stop any running Klaus Agent instance before calling
-`getUpdates`, because a bot must have only one long-poll consumer.
-
-The following reads the token without echoing it, passes it to curl through standard input rather
-than a command-line argument, and prints only immutable IDs and chat types:
-
-```sh
-read -r -s KLAUS_TELEGRAM_TOKEN
-printf 'url = "https://api.telegram.org/bot%s/getUpdates"\n' "$KLAUS_TELEGRAM_TOKEN" |
-  curl --fail --silent --show-error --config - |
-  jq '.result[] | .message // .channel_post | {sender_id: .from.id, chat_id: .chat.id, chat_type: .chat.type}'
-unset KLAUS_TELEGRAM_TOKEN
-```
-
-Copy decimal IDs as quoted strings. Negative IDs identify groups/supergroups. Authorization always
-requires both an allowlisted sender ID and an allowlisted chat ID; usernames and display names are
-never used.
-
 ## Household system prompt
 
 The built-in household system prompt is used by default. To replace it with operator-managed
@@ -116,6 +95,39 @@ reconnection. Only configure endpoints whose catalogue you trust, and use the op
 when a server also exposes operations you do not want available. The intended first deployment may
 point `home` at the existing Home Assistant MCP server, but there is no Home Assistant-specific code.
 
+A local stdio MCP server can instead be configured with a fixed executable and argument vector. Ordinary environment values are declared inline; secret values are read from mounted files immediately before the child starts:
+
+```yaml
+mcp:
+  - id: kaneo
+    command: node
+    args: [/app/node_modules/@kaneo/mcp/dist/index.js, serve]
+    env:
+      KANEO_API_URL: https://todo.mauzlab.de
+    secretEnv:
+      KANEO_API_KEY: /run/secrets/kaneo/api-key
+    tools:
+      [
+        list_workspaces,
+        list_projects,
+        get_project,
+        create_project,
+        update_project,
+        list_project_columns,
+        list_tasks,
+        get_task,
+        create_task,
+        update_task,
+        move_task,
+        update_task_status,
+        update_task_assignee,
+        update_task_due_date,
+        list_workspace_members,
+      ]
+```
+
+The production image pins the official `@kaneo/mcp` package, so it does not use `npx` or download code at startup. Create the Kaneo API key under a dedicated automation account, mount it as a read-only secret, and never put it in YAML, command arguments, logs, or model instructions. The example allowlist intentionally excludes workspace mutation/deletion, task deletion, comments, labels, relations, search, notifications, time entries, and `whoami`.
+
 ## Container
 
 Build and run the same application artifact locally:
@@ -134,9 +146,9 @@ For this layout, update the container configuration paths to `/run/secrets/...`,
 `/var/lib/klaus-agent`, and `/var/lib/klaus-agent-auth/auth.json`, and set the health host to
 `0.0.0.0`.
 
-The k3s example and rollout procedure are documented in
-[`docs/deployment.md`](docs/deployment.md). Backup, upgrade, and rollback procedures are in
-[`docs/operations.md`](docs/operations.md).
+The k3s manifests deploy to the pre-provisioned `klaus` namespace; the example and rollout
+procedure are documented in [`docs/deployment.md`](docs/deployment.md). Backup, upgrade, and
+rollback procedures are in [`docs/operations.md`](docs/operations.md).
 
 ## Quality gates
 

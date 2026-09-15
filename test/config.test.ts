@@ -67,12 +67,36 @@ describe("configuration and secrets", () => {
     expect(disabled.mcp[0]?.tools).toEqual([]);
   });
 
-  it("rejects duplicate MCP ids and embedded credentials", () => {
+  it("supports a fixed stdio command with redacted secret environment files", () => {
+    const source = validYaml("/tmp/klaus").replace(
+      "    url: http://home-mcp.default.svc/mcp\n    tokenFile: /tmp/klaus/mcp-token",
+      "    command: node\n    args: [server.js, serve]\n    env:\n      KANEO_API_URL: https://todo.mauzlab.de\n    secretEnv:\n      KANEO_API_KEY: /tmp/klaus/kaneo-key",
+    );
+    const config = parseConfig(source);
+    expect(config.mcp[0]).toMatchObject({
+      command: "node",
+      args: ["server.js", "serve"],
+      env: { KANEO_API_URL: "https://todo.mauzlab.de" },
+      secretEnv: { KANEO_API_KEY: "/tmp/klaus/kaneo-key" },
+    });
+    expect(() => assertAbsoluteConfiguredPaths(config)).not.toThrow();
+    const serialized = JSON.stringify(publicConfig(config));
+    expect(serialized).toContain("[secret-file]");
+    expect(serialized).not.toContain("kaneo-key");
+  });
+
+  it("rejects duplicate MCP ids, embedded credentials, and ambiguous stdio secrets", () => {
     const source = validYaml("/tmp/klaus").replace(
       "skills:",
       "  - id: home\n    url: https://user:pass@example.test/mcp\n    tools: [x]\nskills:",
     );
     expect(() => parseConfig(source)).toThrow();
+
+    const ambiguous = validYaml("/tmp/klaus").replace(
+      "    url: http://home-mcp.default.svc/mcp\n    tokenFile: /tmp/klaus/mcp-token",
+      "    command: node\n    env:\n      KANEO_API_KEY: ordinary\n    secretEnv:\n      KANEO_API_KEY: /tmp/klaus/kaneo-key",
+    );
+    expect(() => parseConfig(ambiguous)).toThrow();
   });
 
   it("keeps secret locations and values out of public output", async () => {

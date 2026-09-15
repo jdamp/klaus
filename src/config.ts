@@ -12,17 +12,10 @@ const pathValue = z
   .min(1)
   .transform((value) => resolve(value));
 const mcpId = z.string().regex(/^[a-z][a-z0-9_-]*$/);
+const environmentName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 
-const mcpServerSchema = z.object({
+const mcpCommonSchema = {
   id: mcpId,
-  url: z
-    .url()
-    .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "must use HTTP(S)")
-    .refine((value) => {
-      const url = new URL(value);
-      return !url.username && !url.password && !url.hash;
-    }, "must not contain embedded credentials or a fragment"),
-  tokenFile: pathValue.optional(),
   tools: z.array(z.string().min(1)).optional(),
   timeoutMs: z.number().int().positive().default(15_000),
   maxResultBytes: z
@@ -30,7 +23,44 @@ const mcpServerSchema = z.object({
     .int()
     .positive()
     .default(64 * 1024),
-});
+};
+
+const httpMcpServerSchema = z
+  .object({
+    ...mcpCommonSchema,
+    url: z
+      .url()
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "must use HTTP(S)")
+      .refine((value) => {
+        const url = new URL(value);
+        return !url.username && !url.password && !url.hash;
+      }, "must not contain embedded credentials or a fragment"),
+    tokenFile: pathValue.optional(),
+  })
+  .strict();
+
+const stdioMcpServerSchema = z
+  .object({
+    ...mcpCommonSchema,
+    command: z.string().min(1),
+    args: z.array(z.string()).default([]),
+    env: z.record(z.string(), z.string()).default({}),
+    secretEnv: z.record(environmentName, pathValue).default({}),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    for (const name of Object.keys(value.secretEnv)) {
+      if (name in value.env) {
+        context.addIssue({
+          code: "custom",
+          path: ["secretEnv", name],
+          message: "must not duplicate an ordinary environment variable",
+        });
+      }
+    }
+  });
+
+const mcpServerSchema = z.union([httpMcpServerSchema, stdioMcpServerSchema]);
 
 const configSchema = z
   .object({
@@ -104,7 +134,13 @@ export function assertAbsoluteConfiguredPaths(config: AppConfig): void {
     ...(config.agent.systemPromptFile ? [config.agent.systemPromptFile] : []),
     config.data.directory,
     ...config.skills.paths,
-    ...config.mcp.flatMap((server) => (server.tokenFile ? [server.tokenFile] : [])),
+    ...config.mcp.flatMap((server) =>
+      "url" in server
+        ? server.tokenFile
+          ? [server.tokenFile]
+          : []
+        : Object.values(server.secretEnv),
+    ),
   ];
   if (paths.some((path) => !isAbsolute(path))) {
     throw new Error("All configured paths must resolve to absolute paths");
@@ -116,9 +152,18 @@ export function publicConfig(config: AppConfig): unknown {
     ...config,
     telegram: { ...config.telegram, tokenFile: "[secret-file]" },
     model: { ...config.model, authPath: "[protected-auth-path]" },
-    mcp: config.mcp.map((server) => ({
-      ...server,
-      tokenFile: server.tokenFile ? "[secret-file]" : undefined,
-    })),
+    mcp: config.mcp.map((server) =>
+      "url" in server
+        ? {
+            ...server,
+            tokenFile: server.tokenFile ? "[secret-file]" : undefined,
+          }
+        : {
+            ...server,
+            secretEnv: Object.fromEntries(
+              Object.keys(server.secretEnv).map((name) => [name, "[secret-file]"]),
+            ),
+          },
+    ),
   };
 }

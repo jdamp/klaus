@@ -1,6 +1,6 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -133,6 +133,75 @@ describe("generic MCP registry", () => {
       "home__shopping_list",
       "home__vacuum",
     ]);
+    database.close();
+  });
+
+  it("spawns stdio MCP servers, injects secret files, and redacts returned secrets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "klaus-stdio-"));
+    const secret = "stdio-fixture-secret";
+    const secretFile = join(root, "secret");
+    await writeFile(secretFile, secret);
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const redactor = new SecretRedactor();
+    const registry = new McpRegistry(
+      [
+        {
+          id: "stdio",
+          command: process.execPath,
+          args: [resolve("test/fixtures/mcp-stdio-secret.mjs")],
+          env: {},
+          secretEnv: { TEST_MCP_SECRET: secretFile },
+          timeoutMs: 1_000,
+          maxResultBytes: 4_096,
+        },
+      ],
+      new ToolAuditRepository(database),
+      undefined,
+      redactor,
+    );
+    await registry.connect();
+    expect(registry.health().stdio?.status).toBe("healthy");
+    expect(registry.names()).toEqual(["stdio__secret_echo"]);
+    const result = await registry.call("stdio__secret_echo", {});
+    expect(JSON.stringify(result)).toContain("[REDACTED]");
+    const audit = JSON.stringify(
+      database.connection.prepare("SELECT * FROM tool_executions").all(),
+    );
+    expect(audit).not.toContain(secret);
+    await registry.close();
+    database.close();
+  });
+
+  it("initializes the pinned official Kaneo stdio package without device flow", async () => {
+    const root = await mkdtemp(join(tmpdir(), "klaus-kaneo-"));
+    const secretFile = join(root, "api-key");
+    await writeFile(secretFile, "test-kaneo-api-key");
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const registry = new McpRegistry(
+      [
+        {
+          id: "kaneo",
+          command: process.execPath,
+          args: [resolve("node_modules/@kaneo/mcp/dist/index.js"), "serve"],
+          env: { KANEO_API_URL: "https://todo.mauzlab.de" },
+          secretEnv: { KANEO_API_KEY: secretFile },
+          tools: ["list_workspaces", "list_projects", "get_project"],
+          timeoutMs: 5_000,
+          maxResultBytes: 4_096,
+        },
+      ],
+      new ToolAuditRepository(database),
+    );
+    await registry.connect();
+    expect(registry.health().kaneo?.status).toBe("healthy");
+    expect(registry.names()).toEqual([
+      "kaneo__get_project",
+      "kaneo__list_projects",
+      "kaneo__list_workspaces",
+    ]);
+    await registry.close();
     database.close();
   });
 

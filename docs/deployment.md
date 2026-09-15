@@ -2,6 +2,15 @@
 
 ## k3s deployment
 
+The checked-in manifests target the pre-provisioned `klaus` namespace. Confirm the target before
+applying changes with `kubectl get namespace klaus`; do not create or use the legacy
+`klaus-agent` namespace. Inspect the test rollout with:
+
+```sh
+kubectl -n klaus get deployment,pods,pvc
+kubectl -n klaus rollout status deployment/klaus-agent --timeout=5m
+```
+
 The example uses one replica and the `Recreate` strategy. This deliberately stops the old
 long-poll consumer before starting its replacement. It has separate persistent claims for SQLite
 application data and mutable Pi authentication state, while configuration and service credentials
@@ -10,10 +19,12 @@ are mounted read-only.
 1. Build and push an immutable image. Replace `ghcr.io/example/klaus-agent:1.0.0` in
    `deploy/k3s/klaus-agent.yaml` with that tag or, preferably, its registry digest.
 2. Copy `deploy/k3s/secret.example.yaml` outside the repository, replace the placeholders, apply
-   it, and do not commit the resulting file.
-3. Replace the example Telegram IDs, provider/model selection, and MCP URL in the ConfigMap. An MCP
-   server with no `tools` field exposes its discovered catalogue; add a list only when you want to
-   restrict that server, or `tools: []` to expose none.
+   it, and do not commit the resulting file. Create a dedicated Kaneo API key under the automation
+   account and set `kaneo-api-key`; do not reuse a personal key.
+3. Replace the example Telegram IDs, provider/model selection, and Home Assistant MCP URL in the
+   ConfigMap. The Kaneo entry uses the pinned package over stdio and an explicit non-destructive
+   project/task allowlist. An MCP server with no `tools` field exposes its discovered catalogue;
+   add a list only when you want to restrict that server, or `tools: []` to expose none.
 4. If using a custom household prompt, add `agent.systemPromptFile` to the ConfigMap and include the
    UTF-8 prompt as a read-only ConfigMap or mounted file at that path. The file completely replaces
    the built-in prompt and must be non-empty; restart the pod after changes.
@@ -51,6 +62,9 @@ rollout. Record the image digest, configuration revision, time, tester, and resu
 - [ ] An allowlisted user in a non-allowlisted chat receives no response and creates no stored
       update.
 - [ ] An allowlisted MCP read operation succeeds and returns a bounded result.
+- [ ] Kaneo workspace/project/task reads succeed through the namespaced stdio tools.
+- [ ] A harmless create/update operation in a designated non-critical Kaneo project is confirmed
+      both in Telegram and in Kaneo; excluded deletion and workspace-mutation tools are unavailable.
 - [ ] Each enabled non-critical action (for example a test light) is confirmed both in Telegram and
       at the target service.
 - [ ] With `tools` omitted, the configured MCP server catalogue is exposed and a representative
@@ -76,4 +90,6 @@ before the replacement becomes active; `Recreate` enforces this at Deployment le
 readiness and repeat the authorization, one read-only MCP call, and one harmless action checks.
 
 Rollback must also use `Recreate`. If the previous image cannot read the upgraded schema, restore
-the pre-upgrade backup to a fresh data volume rather than attempting an in-place downgrade.
+the pre-upgrade backup to a fresh data volume rather than attempting an in-place downgrade. Remove
+the Kaneo entry and mount when rolling back, and revoke the dedicated Kaneo API key if the
+integration is retired or the secret may have been exposed.

@@ -7,7 +7,7 @@ import { parseConfig } from "../src/config.js";
 
 type KubernetesObject = {
   kind?: string;
-  metadata?: { name?: string };
+  metadata?: { name?: string; namespace?: string };
   data?: Record<string, string>;
   spec?: Record<string, unknown>;
 };
@@ -44,9 +44,23 @@ describe("packaging and deployment examples", () => {
       (document) => document.toJS() as KubernetesObject,
     );
     expect(objects.every((object) => object.kind)).toBe(true);
+    expect(objects.find((object) => object.kind === "Namespace")?.metadata?.name).toBe("klaus");
+    expect(
+      objects
+        .filter((object) => object.kind !== "Namespace")
+        .every((object) => object.metadata?.namespace === "klaus"),
+    ).toBe(true);
     const configMap = objects.find((object) => object.kind === "ConfigMap");
     expect(configMap?.data?.["config.yaml"]).toBeDefined();
     const config = parseConfig(configMap!.data!["config.yaml"]!);
+    expect(config.mcp[1]).toMatchObject({
+      id: "kaneo",
+      command: "node",
+      env: { KANEO_API_URL: "https://todo.mauzlab.de" },
+      secretEnv: { KANEO_API_KEY: "/run/secrets/kaneo/api-key" },
+    });
+    expect(config.mcp[1]?.tools).toContain("create_task");
+    expect(config.mcp[1]?.tools).not.toContain("delete_task");
     expect(config.data.directory).toBe("/var/lib/klaus-agent");
     expect(config.model.authPath).toBe("/var/lib/klaus-agent-auth/auth.json");
 
@@ -95,6 +109,7 @@ describe("packaging and deployment examples", () => {
         expect.objectContaining({ name: "config", readOnly: true }),
         expect.objectContaining({ name: "telegram-token", readOnly: true }),
         expect.objectContaining({ name: "home-mcp-token", readOnly: true }),
+        expect.objectContaining({ name: "kaneo-api-key", readOnly: true }),
         expect.objectContaining({ name: "data" }),
         expect.objectContaining({ name: "auth" }),
       ]),
@@ -110,6 +125,7 @@ describe("packaging and deployment examples", () => {
     const source = await readFile("deploy/k3s/secret.example.yaml", "utf8");
     expect(source).toContain("REPLACE_WITH_TEST_BOT_TOKEN");
     expect(source).toContain("REPLACE_WITH_MCP_BEARER_TOKEN");
+    expect(source).toContain("REPLACE_WITH_KANEO_API_KEY");
     expect(source).not.toMatch(/\d{8,}:[A-Za-z0-9_-]{20,}/);
   });
 });
