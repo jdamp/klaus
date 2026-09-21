@@ -69,7 +69,8 @@ export class PiSessionFactory {
     private readonly config: AppConfig,
     private readonly runtime: ModelRuntime,
     private readonly entries: SessionEntryRepository,
-    private readonly customTools: readonly ToolDefinition[] = [],
+    private readonly customTools:
+      readonly ToolDefinition[] | ((sessionId: string) => readonly ToolDefinition[]) = [],
     private readonly systemPrompt = HOUSEHOLD_SYSTEM_PROMPT,
   ) {}
 
@@ -147,6 +148,8 @@ export class PiSessionFactory {
       defaultTools: [],
     });
 
+    const customTools =
+      typeof this.customTools === "function" ? this.customTools(sessionId) : this.customTools;
     const { session } = await createAgentSession({
       modelRuntime: this.runtime,
       model,
@@ -155,8 +158,8 @@ export class PiSessionFactory {
       sessionManager,
       settingsManager,
       noTools: "all",
-      tools: this.customTools.map((tool) => tool.name),
-      customTools: [...this.customTools],
+      tools: customTools.map((tool) => tool.name),
+      customTools: [...customTools],
     });
 
     return {

@@ -25,6 +25,14 @@ data:
       authPath: /var/lib/klaus-agent-auth/auth.json
       contextTokens: 64000
       retryLimit: 2
+    # Optional native Mealie integration. Uncomment only after upgrading Mealie to 3.23+.
+    # mealie:
+    #   baseUrl: https://mealie.example.invalid
+    #   apiKeyFile: /run/secrets/mealie/api-key
+    #   requestTimeoutMs: 30000
+    #   importTimeoutMs: 180000
+    #   maxResponseBytes: 1048576
+    #   maxResultBytes: 65536
     mcp:
       - id: home
         url: https://mcp.example.invalid/mcp
@@ -160,6 +168,9 @@ spec:
             - name: kaneo-api-key
               mountPath: /run/secrets/kaneo
               readOnly: true
+            - name: mealie-api-key
+              mountPath: /run/secrets/mealie
+              readOnly: true
             - name: data
               mountPath: /var/lib/klaus-agent
             - name: auth
@@ -185,6 +196,13 @@ spec:
             secretName: klaus-agent-secrets
             items:
               - key: kaneo-api-key
+                path: api-key
+        - name: mealie-api-key
+          secret:
+            secretName: klaus-agent-secrets
+            optional: true
+            items:
+              - key: mealie-api-key
                 path: api-key
         - name: data
           persistentVolumeClaim:

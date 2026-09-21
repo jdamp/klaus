@@ -91,6 +91,31 @@ const migrations = [
     DROP TABLE telegram_updates;
     ALTER TABLE telegram_updates_v2 RENAME TO telegram_updates;`,
   `ALTER TABLE outbox_messages ADD COLUMN parse_mode TEXT CHECK (parse_mode IS NULL OR parse_mode='HTML');`,
+  `CREATE TABLE IF NOT EXISTS tool_executions (
+      id TEXT PRIMARY KEY,
+      update_id TEXT,
+      server_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL,
+      arguments_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('started','success','failure','timeout','cancelled','indeterminate','partial')),
+      result_json TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+    CREATE TABLE tool_executions_v2 (
+      id TEXT PRIMARY KEY,
+      update_id TEXT,
+      server_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL,
+      arguments_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('started','success','failure','timeout','cancelled','indeterminate','partial')),
+      result_json TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+    INSERT INTO tool_executions_v2 SELECT * FROM tool_executions;
+    DROP TABLE tool_executions;
+    ALTER TABLE tool_executions_v2 RENAME TO tool_executions;`,
 ] as const;
 
 export class AppDatabase {

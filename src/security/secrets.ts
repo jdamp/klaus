@@ -12,7 +12,7 @@ export class SecretRedactor {
   readonly #values = new Set<string>();
 
   add(value: string | undefined): void {
-    if (value && value.length >= 4) this.#values.add(value);
+    if (value) this.#values.add(value);
   }
 
   redact(value: unknown): unknown {

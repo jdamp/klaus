@@ -13,6 +13,8 @@ import { OutboxWorker } from "../delivery/outbox-worker.js";
 import { KeyedQueue } from "../dispatch/keyed-queue.js";
 import { HealthServer } from "../health/server.js";
 import { McpRegistry } from "../mcp/registry.js";
+import { AgentToolCatalog } from "../capabilities/catalog.js";
+import { MealieProvider } from "../integrations/mealie/provider.js";
 import { AppDatabase } from "../persistence/database.js";
 import {
   ChatRepository,
@@ -57,6 +59,15 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
       }
     }
   }
+  let mealieKey: string | undefined;
+  if (config.mealie) {
+    try {
+      mealieKey = await readSecret(config.mealie.apiKeyFile);
+    } catch (error) {
+      throw new Error("Unable to read configured Mealie API key file", { cause: error });
+    }
+  }
+  redactor.add(mealieKey);
   const logger = new Logger(redactor);
 
   const database = new AppDatabase(join(config.data.directory, "klaus.sqlite"));
@@ -69,9 +80,15 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
     );
   }
 
-  const mcp = new McpRegistry(config.mcp, new ToolAuditRepository(database), undefined, redactor);
-  const capabilities = new CapabilityComponent(mcp);
-  const sessions = new SessionComponent(config, runtime, database, mcp, systemPrompt);
+  const audits = new ToolAuditRepository(database);
+  const mcp = new McpRegistry(config.mcp, audits, undefined, redactor);
+  const providers = [mcp] as Array<McpRegistry | MealieProvider>;
+  if (config.mealie && mealieKey) {
+    providers.push(new MealieProvider(config.mealie, mealieKey, audits, redactor));
+  }
+  const catalog = new AgentToolCatalog(providers);
+  const capabilities = new CapabilityComponent(catalog);
+  const sessions = new SessionComponent(config, runtime, database, catalog, systemPrompt);
   const api = new TelegramHttpClient(telegramToken);
   const outbox = new OutboxRepository(database);
   const chats = new ChatRepository(database);

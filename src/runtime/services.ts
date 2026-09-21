@@ -6,7 +6,7 @@ import { SessionRegistry } from "../agent/session-registry.js";
 import { AgentTurnHandler } from "../agent/turn.js";
 import type { ServiceComponent } from "../app/lifecycle.js";
 import type { AppConfig } from "../config.js";
-import type { McpRegistry } from "../mcp/registry.js";
+import type { CapabilityCatalog } from "../capabilities/types.js";
 import type { AppDatabase } from "../persistence/database.js";
 import {
   ChatRepository,
@@ -74,22 +74,18 @@ export class PersistenceComponent implements ServiceComponent {
 
 export class CapabilityComponent implements ServiceComponent {
   readonly name = "capabilities";
-  constructor(readonly registry: McpRegistry) {}
-  start(): Promise<void> {
-    return this.registry.connect();
+  constructor(readonly catalog: CapabilityCatalog) {}
+  start(signal: AbortSignal): Promise<void> {
+    return this.catalog.start(signal);
   }
   stop(): Promise<void> {
-    return this.registry.close();
+    return this.catalog.stop();
   }
   health() {
-    const states = Object.values(this.registry.health());
+    const states = Object.values(this.catalog.health());
+    const unhealthy = states.find((state) => state.status === "unhealthy");
     const degraded = states.find((state) => state.status === "degraded");
-    return degraded
-      ? {
-          status: "degraded" as const,
-          ...(degraded.detail ? { detail: degraded.detail } : {}),
-        }
-      : { status: "healthy" as const };
+    return unhealthy ?? degraded ?? { status: "healthy" as const };
   }
 }
 
@@ -103,7 +99,7 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
     private readonly config: AppConfig,
     private readonly runtime: ModelRuntime,
     private readonly database: AppDatabase,
-    private readonly capabilities: McpRegistry,
+    private readonly capabilities: CapabilityCatalog,
     private readonly systemPrompt?: string,
   ) {}
 
@@ -112,7 +108,7 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
       this.config,
       this.runtime,
       new SessionEntryRepository(this.database),
-      this.capabilities.piTools(),
+      (sessionId) => this.capabilities.tools({ sessionId }),
       this.systemPrompt,
     );
     this.#registry = new SessionRegistry(factory);

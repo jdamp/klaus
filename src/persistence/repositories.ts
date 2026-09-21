@@ -163,12 +163,14 @@ export class SessionEntryRepository {
   }
 }
 
-export type ToolOutcome = "success" | "failure" | "timeout" | "cancelled" | "indeterminate";
+export type ToolOutcome =
+  "success" | "failure" | "timeout" | "cancelled" | "indeterminate" | "partial";
 
 export class ToolAuditRepository {
   constructor(private readonly database: AppDatabase) {}
 
-  start(serverId: string, toolName: string, argumentsValue: unknown, updateId?: string): string {
+  start(providerId: string, toolName: string, argumentsValue: unknown, updateId?: string): string {
+    const serverId = providerId;
     const id = randomUUID();
     this.database.connection
       .prepare(

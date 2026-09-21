@@ -62,6 +62,32 @@ const stdioMcpServerSchema = z
 
 const mcpServerSchema = z.union([httpMcpServerSchema, stdioMcpServerSchema]);
 
+const mealieSchema = z
+  .object({
+    baseUrl: z
+      .url()
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "must use HTTP(S)")
+      .refine((value) => {
+        const url = new URL(value);
+        return !url.username && !url.password && !url.search && !url.hash;
+      }, "must not contain credentials, a query, or a fragment")
+      .transform((value) => value.replace(/\/$/, "")),
+    apiKeyFile: pathValue,
+    requestTimeoutMs: z.number().int().positive().default(30_000),
+    importTimeoutMs: z.number().int().positive().default(180_000),
+    maxResponseBytes: z
+      .number()
+      .int()
+      .positive()
+      .default(1024 * 1024),
+    maxResultBytes: z
+      .number()
+      .int()
+      .positive()
+      .default(64 * 1024),
+  })
+  .strict();
+
 const configSchema = z
   .object({
     telegram: z.object({
@@ -87,6 +113,7 @@ const configSchema = z
       retryLimit: z.number().int().min(0).max(10).default(2),
     }),
     mcp: z.array(mcpServerSchema).default([]),
+    mealie: mealieSchema.optional(),
     skills: z.object({
       paths: z.array(pathValue).default([]),
     }),
@@ -134,6 +161,7 @@ export function assertAbsoluteConfiguredPaths(config: AppConfig): void {
     ...(config.agent.systemPromptFile ? [config.agent.systemPromptFile] : []),
     config.data.directory,
     ...config.skills.paths,
+    ...(config.mealie ? [config.mealie.apiKeyFile] : []),
     ...config.mcp.flatMap((server) =>
       "url" in server
         ? server.tokenFile
@@ -152,6 +180,7 @@ export function publicConfig(config: AppConfig): unknown {
     ...config,
     telegram: { ...config.telegram, tokenFile: "[secret-file]" },
     model: { ...config.model, authPath: "[protected-auth-path]" },
+    mealie: config.mealie ? { ...config.mealie, apiKeyFile: "[secret-file]" } : undefined,
     mcp: config.mcp.map((server) =>
       "url" in server
         ? {

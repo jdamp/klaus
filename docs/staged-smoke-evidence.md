@@ -79,3 +79,19 @@ authorization as sufficient for this local staging run.
 No Telegram or MCP action smoke tests have been performed against this Kubernetes deployment yet.
 The temporary image expires after 24 hours and must be replaced with a reviewed immutable registry
 image before any continued use.
+
+## Native Mealie evidence checklist
+
+When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
+source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
+full tool results.
+
+- [ ] Mealie reports a supported 3.23+ version and the API key is absent from logs, health output,
+      SQLite audits, session entries, and public configuration.
+- [ ] Scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI disposable imports complete or
+      report the documented partial/indeterminate outcome.
+- [ ] Existing-recipe OpenAI reparsing preserves ordering, section references, and verification.
+- [ ] Text, category, tag, and ingredient searches resolve exact filters and reject ambiguity.
+- [ ] Category/tag list, create, rename, assignment, replacement, and explicit clear succeed;
+      deletion and out-of-scope tools are absent.
+- [ ] A temporary Mealie outage degrades only Mealie and recovery works without restarting Klaus.

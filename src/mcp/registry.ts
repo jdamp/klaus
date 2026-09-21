@@ -6,6 +6,7 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import type { McpServerConfig } from "../config.js";
 import type { ToolAuditRepository, ToolOutcome } from "../persistence/repositories.js";
 import { readSecret, SecretRedactor } from "../security/secrets.js";
+import type { CapabilityProvider } from "../capabilities/types.js";
 
 export type DiscoveredTool = {
   name: string;
@@ -79,7 +80,8 @@ export type McpClientFactory = (
   secretEnv?: Record<string, string>,
 ) => Promise<McpClientLike>;
 
-export class McpRegistry {
+export class McpRegistry implements CapabilityProvider {
+  readonly id = "mcp";
   readonly #clients = new Map<string, McpClientLike>();
   readonly #tools = new Map<
     string,
@@ -103,6 +105,10 @@ export class McpRegistry {
   #safeDetail(error: unknown, fallback: string): string {
     const detail = error instanceof Error ? error.message : fallback;
     return String(this.redactor.redact(detail));
+  }
+
+  async start(): Promise<void> {
+    await this.connect();
   }
 
   async connect(): Promise<void> {
@@ -199,6 +205,10 @@ export class McpRegistry {
     return false;
   }
 
+  stop(): Promise<void> {
+    return this.close();
+  }
+
   async close(): Promise<void> {
     await Promise.allSettled([...this.#clients.values()].map((client) => client.close()));
     this.#clients.clear();
@@ -248,6 +258,10 @@ export class McpRegistry {
       });
       throw error;
     }
+  }
+
+  tools(): readonly ToolDefinition[] {
+    return this.piTools();
   }
 
   piTools(): ToolDefinition[] {

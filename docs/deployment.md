@@ -20,10 +20,13 @@ are mounted read-only.
    `deploy/k3s/klaus-agent.yaml` with that tag or, preferably, its registry digest.
 2. Copy `deploy/k3s/secret.example.yaml` outside the repository, replace the placeholders, apply
    it, and do not commit the resulting file. Create a dedicated Kaneo API key under the automation
-   account and set `kaneo-api-key`; do not reuse a personal key.
+   account and set `kaneo-api-key`; do not reuse a personal key. If enabling Mealie, first upgrade it
+   to 3.23.0 or newer, configure its AI provider, and set `mealie-api-key` from a dedicated key.
 3. Replace the example Telegram IDs, provider/model selection, and Home Assistant MCP URL in the
    ConfigMap. The Kaneo entry uses the pinned package over stdio and an explicit non-destructive
-   project/task allowlist. An MCP server with no `tools` field exposes its discovered catalogue;
+   project/task allowlist. The optional Mealie section is commented out until its endpoint and key
+   have been reviewed; when enabled it exposes only recipe and non-destructive organizer tools. An
+   MCP server with no `tools` field exposes its discovered catalogue;
    add a list only when you want to restrict that server, or `tools: []` to expose none.
 4. If using a custom household prompt, add `agent.systemPromptFile` to the ConfigMap and include the
    UTF-8 prompt as a read-only ConfigMap or mounted file at that path. The file completely replaces
@@ -71,6 +74,9 @@ rollout. Record the image digest, configuration revision, time, tester, and resu
       formerly unlisted namespaced tool is available.
 - [ ] With the MCP endpoint stopped, unrelated conversation still works and health reports
       degradation.
+- [ ] If Mealie is enabled, verify scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI
+      imports against disposable recipes; verify an existing-recipe reparse, filtered searches,
+      organizer create/rename/assign/clear, and recovery after a temporary outage.
 - [ ] After terminating the pod during a turn, the recorded update is not replayed and any
       ambiguous tool execution is marked indeterminate.
 - [ ] After terminating the pod during delivery, a pending response is delivered once after
@@ -92,4 +98,5 @@ readiness and repeat the authorization, one read-only MCP call, and one harmless
 Rollback must also use `Recreate`. If the previous image cannot read the upgraded schema, restore
 the pre-upgrade backup to a fresh data volume rather than attempting an in-place downgrade. Remove
 the Kaneo entry and mount when rolling back, and revoke the dedicated Kaneo API key if the
-integration is retired or the secret may have been exposed.
+integration is retired or the secret may have been exposed. If Mealie is enabled, remove its
+configuration and mount and revoke its dedicated API key on rollback.

@@ -21,6 +21,15 @@ model:
   contextTokens: 64000
   retryLimit: 2
 
+# Optional native Mealie integration. The API key is read from a mounted secret file.
+# mealie:
+#   baseUrl: https://mealie.example.invalid
+#   apiKeyFile: .local/secrets/mealie-api-key
+#   requestTimeoutMs: 30000
+#   importTimeoutMs: 180000
+#   maxResponseBytes: 1048576
+#   maxResultBytes: 65536
+
 mcp:
   - id: home
     url: https://mcp.example.invalid/mcp
