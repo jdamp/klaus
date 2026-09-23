@@ -116,6 +116,49 @@ const migrations = [
     INSERT INTO tool_executions_v2 SELECT * FROM tool_executions;
     DROP TABLE tool_executions;
     ALTER TABLE tool_executions_v2 RENAME TO tool_executions;`,
+  `CREATE TABLE memory_notes (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      tags_json TEXT NOT NULL,
+      revision INTEGER NOT NULL CHECK (revision > 0),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      source_sender_id TEXT,
+      source_update_id TEXT,
+      source_description TEXT
+    );
+    CREATE TABLE memory_mutations (
+      update_id TEXT NOT NULL,
+      tool_call_id TEXT NOT NULL,
+      operation TEXT NOT NULL CHECK (operation IN ('save','delete')),
+      target_id TEXT NOT NULL,
+      outcome_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (update_id, tool_call_id)
+    );
+    CREATE VIRTUAL TABLE memory_notes_fts USING fts5(
+      id UNINDEXED,
+      title,
+      tags,
+      body,
+      tokenize='unicode61 remove_diacritics 2'
+    );
+    CREATE TRIGGER memory_notes_fts_insert AFTER INSERT ON memory_notes BEGIN
+      INSERT INTO memory_notes_fts(id,title,tags,body)
+      VALUES (new.id,new.title,new.tags_json,new.body);
+    END;
+    CREATE TRIGGER memory_notes_fts_update AFTER UPDATE ON memory_notes BEGIN
+      DELETE FROM memory_notes_fts WHERE id=old.id;
+      INSERT INTO memory_notes_fts(id,title,tags,body)
+      VALUES (new.id,new.title,new.tags_json,new.body);
+    END;
+    CREATE TRIGGER memory_notes_fts_delete AFTER DELETE ON memory_notes BEGIN
+      DELETE FROM memory_notes_fts WHERE id=old.id;
+    END;
+    INSERT OR IGNORE INTO memory_notes(
+      id,title,body,tags_json,revision,created_at,updated_at
+    ) VALUES ('overview','Household overview','','[]',1,datetime('now'),datetime('now'));`,
 ] as const;
 
 export class AppDatabase {

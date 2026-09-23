@@ -1,8 +1,9 @@
 # Database operations
 
 SQLite is the source of truth for accepted Telegram updates, Pi session entries, tool audit
-metadata, and Telegram outbox state. Pi provider authentication is a separate mutable store and
-must be backed up independently with filesystem permissions preserved.
+metadata, Telegram outbox state, and the shared notebook (notes, overview, revisions, mutation
+receipts, and derived FTS index). Pi provider authentication is a separate mutable store and must
+be backed up independently with filesystem permissions preserved.
 
 ## Backup
 
@@ -33,8 +34,9 @@ control.
    node --experimental-sqlite dist/src/cli.js --config /etc/klaus-agent/restore-config.yaml
    ```
 
-5. Confirm `/ready`, chat-session continuity, pending outbox state, and tool audit history before
-   switching the production volume reference.
+5. Confirm `/ready`, chat-session continuity, pending outbox state, tool audit history, `/memory`
+   listing/exact reads, overview revision, and search before switching the production volume
+   reference. Startup reconstructs the derived notebook search index from canonical note rows.
 
 Restore refuses to overwrite an existing database and verifies SQLite integrity before and after
 the copy.
@@ -42,6 +44,8 @@ the copy.
 ## Migration and upgrade
 
 Migrations run transactionally and idempotently at startup before Telegram polling begins.
+The initial memory migration creates an empty revision-1 `overview` only when absent; it never
+repopulates an overview that a participant cleared.
 
 1. Record the current image digest and configuration revision.
 2. Run the quality and migration suites for the target version.

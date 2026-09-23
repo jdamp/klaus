@@ -9,12 +9,18 @@ import {
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type ExtensionFactory,
   type ResourceDiagnostic,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
 import type { AppConfig } from "../config.js";
 import type { SessionEntryRepository } from "../persistence/repositories.js";
+import {
+  ATTRIBUTION_COMPACTION_GUIDANCE,
+  memoryTurnSystemPrompt,
+  type MemoryTurnContextRegistry,
+} from "../memory/context.js";
 
 export type ManagedSession = {
   session: AgentSession;
@@ -30,6 +36,10 @@ export const HOUSEHOLD_SYSTEM_PROMPT = [
   "Use only supplied tools.",
   "Never claim an external action succeeded unless its tool result confirms success.",
 ].join(" ");
+
+export function attributionCompactionInstructions(prior?: string): string {
+  return [prior, ATTRIBUTION_COMPACTION_GUIDANCE].filter(Boolean).join("\n\n");
+}
 
 export async function loadHouseholdSystemPrompt(config: AppConfig): Promise<string> {
   if (!config.agent.systemPromptFile) return HOUSEHOLD_SYSTEM_PROMPT;
@@ -72,6 +82,7 @@ export class PiSessionFactory {
     private readonly customTools:
       readonly ToolDefinition[] | ((sessionId: string) => readonly ToolDefinition[]) = [],
     private readonly systemPrompt = HOUSEHOLD_SYSTEM_PROMPT,
+    private readonly memoryContexts?: MemoryTurnContextRegistry,
   ) {}
 
   async create(
@@ -96,6 +107,16 @@ export class PiSessionFactory {
       }
     }
 
+    const memoryExtension: ExtensionFactory | undefined = this.memoryContexts
+      ? (pi) => {
+          pi.on("before_agent_start", (event) => ({
+            systemPrompt: memoryTurnSystemPrompt(
+              event.systemPrompt,
+              this.memoryContexts!.require(sessionId),
+            ),
+          }));
+        }
+      : undefined;
     const resourceLoader = new DefaultResourceLoader({
       cwd: process.cwd(),
       agentDir: dirname(this.config.model.authPath),
@@ -105,6 +126,13 @@ export class PiSessionFactory {
       noThemes: true,
       noContextFiles: true,
       systemPrompt: this.systemPrompt,
+      ...(memoryExtension
+        ? {
+            extensionFactories: [
+              { name: "klaus-memory-context", hidden: true, factory: memoryExtension },
+            ],
+          }
+        : {}),
       skillsOverride: (base) => ({
         skills: base.skills.filter((skill) =>
           this.config.skills.paths.some((path) => skill.filePath.startsWith(resolve(path))),
@@ -161,6 +189,21 @@ export class PiSessionFactory {
       tools: customTools.map((tool) => tool.name),
       customTools: [...customTools],
     });
+
+    // Pi 0.85 exposes one shared default compaction path for manual, threshold,
+    // and overflow compaction. Decorate it so every built-in summary receives
+    // the same attribution requirement; explicit manual instructions are retained.
+    const compactable = session as unknown as {
+      _runDefaultCompaction: (...argumentsValue: unknown[]) => Promise<unknown>;
+    };
+    if (typeof compactable._runDefaultCompaction === "function") {
+      const original = compactable._runDefaultCompaction.bind(session);
+      compactable._runDefaultCompaction = (...argumentsValue: unknown[]) => {
+        const prior = typeof argumentsValue[4] === "string" ? argumentsValue[4] : undefined;
+        argumentsValue[4] = attributionCompactionInstructions(prior);
+        return original(...argumentsValue);
+      };
+    }
 
     return {
       session,

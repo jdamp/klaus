@@ -67,6 +67,15 @@ function authorized(policy: AdmissionPolicy, chatId: string, senderId: string): 
   return policy.allowedChats.has(chatId) && policy.allowedUsers.has(senderId);
 }
 
+function senderLabel(user: {
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+}): string | undefined {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  return name || user.username;
+}
+
 export function admitUpdate(
   update: TelegramUpdate,
   policy: AdmissionPolicy,
@@ -88,6 +97,7 @@ export function admitUpdate(
     }
     const chatId = message.chat.id.toString();
     const senderId = query.from.id.toString();
+    const label = senderLabel(query.from);
     if (!authorized(policy, chatId, senderId)) return undefined;
     return {
       kind: "callback",
@@ -95,6 +105,7 @@ export function admitUpdate(
       chatId,
       chatType: message.chat.type,
       senderId,
+      ...(label ? { senderLabel: label } : {}),
       messageId: message.message_id.toString(),
       text: query.data,
       callbackQueryId: query.id,
@@ -108,6 +119,7 @@ export function admitUpdate(
 
   const chatId = message.chat.id.toString();
   const senderId = message.from.id.toString();
+  const label = senderLabel(message.from);
   if (!authorized(policy, chatId, senderId)) return undefined;
 
   const command = messageCommand(message, bot);
@@ -120,6 +132,7 @@ export function admitUpdate(
     chatId,
     chatType: message.chat.type,
     senderId,
+    ...(label ? { senderLabel: label } : {}),
     messageId: message.message_id.toString(),
     text: message.chat.type === "private" ? message.text.trim() : withoutBotMentions(message, bot),
   };

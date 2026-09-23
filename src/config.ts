@@ -101,6 +101,39 @@ const configSchema = z
         systemPromptFile: pathValue.optional(),
       })
       .default({}),
+    memory: z
+      .object({
+        overviewMaxBytes: z
+          .number()
+          .int()
+          .min(1_024)
+          .default(8 * 1_024),
+        readMaxBytes: z
+          .number()
+          .int()
+          .min(2_048)
+          .default(16 * 1_024),
+        listSearchMaxBytes: z
+          .number()
+          .int()
+          .min(2_048)
+          .default(16 * 1_024),
+        maxResults: z.number().int().min(1).max(100).default(20),
+        titleMaxBytes: z.number().int().min(16).default(256),
+        tagMaxBytes: z.number().int().min(8).default(64),
+        maxTags: z.number().int().min(0).max(100).default(20),
+        previewMaxBytes: z.number().int().min(16).default(240),
+      })
+      .default({
+        overviewMaxBytes: 8 * 1_024,
+        readMaxBytes: 16 * 1_024,
+        listSearchMaxBytes: 16 * 1_024,
+        maxResults: 20,
+        titleMaxBytes: 256,
+        tagMaxBytes: 64,
+        maxTags: 20,
+        previewMaxBytes: 240,
+      }),
     model: z.object({
       provider: z.string().min(1),
       id: z.string().min(1),
@@ -143,6 +176,23 @@ const configSchema = z
         code: "custom",
         path: ["model", "authPath"],
         message: "Pi authentication must be stored separately from application data",
+      });
+    }
+    if (value.memory.overviewMaxBytes >= value.memory.readMaxBytes) {
+      context.addIssue({
+        code: "custom",
+        path: ["memory", "overviewMaxBytes"],
+        message: "must be smaller than readMaxBytes so overview metadata also fits",
+      });
+    }
+    if (
+      value.memory.titleMaxBytes + value.memory.maxTags * value.memory.tagMaxBytes >=
+      value.memory.readMaxBytes
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["memory", "readMaxBytes"],
+        message: "must exceed the configured title and tag allowance",
       });
     }
   });

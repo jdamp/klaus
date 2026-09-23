@@ -25,6 +25,9 @@ import {
 } from "../persistence/repositories.js";
 import { SecretRedactor, readSecret } from "../security/secrets.js";
 import { Logger } from "../observability/logger.js";
+import { MemoryTurnContextRegistry } from "../memory/context.js";
+import { MemoryProvider } from "../memory/provider.js";
+import { MemoryRepository } from "../memory/repository.js";
 import { TelegramHttpClient } from "../telegram/client.js";
 import { TelegramCommandHandler } from "../telegram/command-handler.js";
 import { TelegramPoller } from "../telegram/poller.js";
@@ -81,20 +84,26 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   }
 
   const audits = new ToolAuditRepository(database);
+  const memoryRepository = new MemoryRepository(database, config.memory);
+  const memoryContexts = new MemoryTurnContextRegistry();
+  const memory = new MemoryProvider(memoryRepository, memoryContexts, audits, redactor);
   const mcp = new McpRegistry(config.mcp, audits, undefined, redactor);
-  const providers = [mcp] as Array<McpRegistry | MealieProvider>;
+  const providers = [memory, mcp] as Array<MemoryProvider | McpRegistry | MealieProvider>;
   if (config.mealie && mealieKey) {
     providers.push(new MealieProvider(config.mealie, mealieKey, audits, redactor));
   }
   const catalog = new AgentToolCatalog(providers);
   const capabilities = new CapabilityComponent(catalog);
-  const sessions = new SessionComponent(config, runtime, database, catalog, systemPrompt);
+  const sessions = new SessionComponent(config, runtime, database, catalog, systemPrompt, {
+    repository: memoryRepository,
+    contexts: memoryContexts,
+  });
   const api = new TelegramHttpClient(telegramToken);
   const outbox = new OutboxRepository(database);
   const chats = new ChatRepository(database);
   const delivery = new OutboxWorker(outbox, api);
   const queue = new KeyedQueue();
-  const commands = new TelegramCommandHandler(chats, outbox, sessions);
+  const commands = new TelegramCommandHandler(chats, outbox, sessions, memoryRepository);
   const router = new TelegramRouter(
     {
       allowedUsers: new Set(config.telegram.allowedUsers),

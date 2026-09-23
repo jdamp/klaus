@@ -13,6 +13,18 @@ telegram:
 # agent:
 #   systemPromptFile: .local/AGENTS.md
 
+# Shared notebook bounds are UTF-8 bytes. Lower values are rejected at startup
+# if existing notes would no longer fit an exact read.
+memory:
+  overviewMaxBytes: 8192
+  readMaxBytes: 16384
+  listSearchMaxBytes: 16384
+  maxResults: 20
+  titleMaxBytes: 256
+  tagMaxBytes: 64
+  maxTags: 20
+  previewMaxBytes: 240
+
 model:
   provider: openai-codex
   id: gpt-5.4

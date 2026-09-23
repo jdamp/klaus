@@ -1,133 +1,140 @@
 ## Context
 
-See `proposal.md` for motivation and `specs/agent-memory/spec.md` for the behavior contract.
+See `proposal.md` for motivation. The service already uses SQLite for durable Pi sessions, updates, tool audits, and delivery, with independent per-chat queues and database backup/restore. The current Pi factory accepts session-specific custom tools and an operator-configurable system prompt. Accepted Telegram inputs carry sender IDs, but the turn handler currently prompts with message text alone.
 
-The application currently stores Pi-native session entries in SQLite, restores one active session per Telegram chat, serializes turns within a chat, and passes only the accepted message text to `AgentSession.prompt`. The accepted input already contains immutable sender, chat, update, and message identifiers. Pi performs conversation compaction, but there is no application memory repository, no current-participant context at the model boundary, and no native application tools beyond configured MCP tools.
-
-The pinned Pi SDK supports application-supplied custom tools and inline extensions. In particular, an inline `before_agent_start` handler can alter the effective system prompt for one agent run. Inline application extensions can be supplied while filesystem extension discovery remains disabled. SQLite is already the application source of truth, is backed up as one unit, and is used concurrently by independently active chat queues.
-
-The foundational `build-home-chat-agent` change is still in flight and owns the not-yet-durable `agent-conversations` capability. Its chat isolation applies to raw session state. This design treats deliberate memory-tool writes as a separate shared household knowledge boundary; it does not make arbitrary private session content cross-chat visible.
+The durable conversation, command, and prompt specs now exist. Their deltas in this change explicitly permit shared saved knowledge, add notebook commands, preserve attribution, and distinguish base instructions from runtime context. This change does not edit those baseline files before implementation/archive.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Keep one shared logical memory for the small set of authorized household participants.
-- Represent durable knowledge as concise, independently correctable topic- or entity-based records.
-- Make the complete active core summary and current-participant identity available on every turn without duplicating either in session history.
-- Let the model explicitly remember, search, update, and forget records with bounded, auditable, idempotent local operations.
-- Preserve chat-session isolation, tool-policy enforcement, restart safety, backups, and secret handling.
+- Provide a readable household notebook that all admitted participants can inspect and maintain.
+- Separate durable note storage from a small always-present overview.
+- Make edits safe across concurrent chats and expose exact stored text through deterministic reading interfaces.
+- Preserve attribution, uncertainty, and rationale when distilling discussions.
+- Fit the existing deployment, custom prompt, cancellation, delivery, and backup paths.
 
 **Non-Goals:**
 
-- Index or semantically retrieve raw chat transcripts, Pi session entries, Telegram updates, or delivered responses.
-- Add embeddings, a vector database, a graph database, or a remote memory service.
-- Run a background extraction or post-conversation summarization model call.
-- Introduce per-user or per-chat memory visibility scopes; all successfully saved memory is household-shared.
-- Store credentials or rely on mutable Telegram names as identity or authorization keys.
-- Automatically import existing conversation history into memory.
+- Per-person visibility or ownership rules, rigid entity keys, a knowledge graph, or an atomic-fact ontology.
+- A second transcript store, transcript search, or historical transcript backfill.
+- Embeddings, a separate database service, background summarization, or automatic overview regeneration.
+- Full revision history, supersession states, semantic deduplication, forensic erasure, or a new cleanup scheduler.
+- Editing memories through a filesystem or a separate web UI. Export can be added later.
 
 ## Decisions
 
-### 1. Store independent memory records in SQLite
+### 1. Use SQLite to store readable notes
 
-Add a `memory_records` table whose active rows contain:
+Add `memory_notes` with a stable UUID (and a reserved overview ID), title, body, optional tags, positive integer revision, created/updated timestamps, and lightweight source metadata. Provenance records the most recent writer's admitted sender/update ID plus an optional short source description; it is not an access-control owner or a substitute for dates inside the note.
 
-- a stable UUID;
-- normalized entity type and entity key, a display label, and searchable aliases;
-- a bounded summary and optional bounded detail;
-- `core` or `reference` importance;
-- optional current-participant association using an immutable Telegram sender ID supplied by turn context;
-- `user_requested` or `agent_selected` origin plus the source update ID and actor sender ID;
-- active, superseded, or forgotten lifecycle state and timestamps.
+Bodies are UTF-8 prose and can contain Markdown. One note covers a coherent topic or finding: for example, `Garden / Irrigation` can contain a decision, its rationale, and unresolved questions. People, places, devices, and projects are ordinary titles/tags. Titles need not be unique; IDs determine edit targets. There is no required entity taxonomy or participant-to-entity registry.
 
-Use minimal non-content tombstones for superseded and forgotten records: clear their summary, detail, aliases, and participant association in the same transaction that changes lifecycle state. This keeps mutation history and idempotency without leaving forgotten content in the live database.
+Guidance tells the agent to browse/read related notes before editing, preserve still-relevant material, and split oversized topics. Do not automatically merge notes by title or lexical similarity.
 
-Add a `memory_operations` table keyed by the Pi tool-call identity and source update. It records operation type, target/result memory ID, completion state, and bounded non-content result metadata. Repeating a completed mutation returns its stored outcome instead of applying it twice. Search calls need not be persisted beyond the existing tool audit policy.
+SQLite is preferred because it is already the transactional storage and backup boundary. Markdown files would improve direct filesystem editing but introduce another persistence and indexing mechanism. Read tools and a local Telegram command provide inspectability without those costs. PostgreSQL and a remote memory service are unnecessary for a single household instance.
 
-This model is preferred over a single mutable memory document because independent records support correction, forgetting, concurrent updates, bounded core selection, and useful search without repeatedly rewriting unrelated knowledge. It is preferred over storing custom Pi session entries because shared memory must survive `/new`, must be available across chat sessions, and must not become stale after compaction.
+### 2. Keep one explicit Household overview
 
-### 2. Use a lightweight entity/topic model rather than a knowledge graph
+Seed a reserved `overview` note with title `Household overview`, an empty body, and revision 1. It contains enduring identities, preferences, household context, and optional references to active topics. It is readable/editable with the same tools as other notes and is listed first.
 
-Every record is assigned a normalized entity key such as `person:klaus`, `project:garden-irrigation`, `device:vacuum`, or `topic:holiday-planning`. Application validation constrains key syntax and text sizes but allows new entity types without a database migration. Aliases make natural variants searchable.
+Ordinary saves never consume overview space. Updating the overview is a separate, occasional editorial action using `memory_save` with its ID and revision. If the proposed overview exceeds its limit, leave its prior revision unchanged and return `overview_limit`; the agent can still save the underlying information in an ordinary note and must describe that outcome accurately. There is no automatic promotion or demotion mechanism.
 
-Relationships are expressed in distilled text or by mentioning other normalized keys; a separate edge table and graph traversal are deferred. At household scale, stable keys, aliases, and full-text retrieval provide the useful part of entity-oriented memory with far less merge and query complexity.
+Deleting the overview clears its body and advances its revision, preserving the reserved record. Startup only seeds it if absent and never repopulates a cleared overview. Deleting an ordinary note removes its row and indexed content.
 
-The remember-tool guidance instructs the model to search before creating another record for an existing topic when duplication is plausible. The repository does not silently merge semantically similar facts. Corrections use an explicit update or supersession operation so model guesses cannot destroy an unrelated record.
+Proposed defaults are an 8 KiB rendered overview, 16 KiB serialized full-note response, and 16 KiB list/search response with at most 20 results. Validate title/tag/body limits together so every accepted note fits a complete `memory_read` response; use UTF-8 byte accounting, not character counts. Reserve the overview and fixed context envelope within the model's context allowance. Defaults are conservative bounds, not exact token predictions. Reject a configuration decrease that would make existing notes or the overview unreadable/oversized; do not silently truncate stored knowledge.
 
-### 3. Index only curated memory with SQLite FTS5
+### 3. Offer five tools with simple contracts
 
-Maintain an FTS5 index over the active record's normalized key, display label, aliases, summary, and detail. Repository transactions update the canonical row and index together. Search converts untrusted model text into quoted tokens rather than accepting raw FTS query syntax, uses prepared statements, boosts exact entity and alias matches, then applies deterministic relevance and recency ordering.
+| Tool | Input | Result |
+|---|---|---|
+| `memory_list` | Optional tag and bounded page/cursor | IDs, titles, deterministic body previews, revisions, timestamps, next page |
+| `memory_read` | Note ID | Complete stored title/body/tags and revision, or not found |
+| `memory_search` | Query, optional tag, bounded limit | Ranked IDs, titles, snippets, revisions, timestamps, more-results indicator |
+| `memory_save` | Title/body/tags; for updates, ID and expected revision | Created/updated ID and committed revision, or validation/conflict/limit error |
+| `memory_delete` | ID and expected revision | Deleted ID or cleared overview with resulting revision, or conflict/not found |
 
-The search tool enforces configured result-count and serialized-byte limits. Results include memory ID, entity identity, summary, optional detail, importance, update time, and a relevance indicator. Superseded and forgotten rows are excluded. An empty search returns an explicit empty collection.
+Updates replace a fully read note using `WHERE id = ? AND revision = ?`, then advance its revision. Deletes also check the revision. A conflict requires another read and deliberate revision; never retry by blindly overwriting. Reject an update to a missing ID instead of recreating it. New notes start at revision 1.
 
-FTS5 is preferred over embeddings because it stays within the existing SQLite backup and privacy boundary, needs no additional provider credentials, and is adequate for a small, model-generated collection. Embeddings can be added behind the repository later without changing the tool contract if evaluation demonstrates a recall problem.
+Commit saves/deletes during the tool call. A small `memory_mutations` receipt keyed by admitted update ID plus tool-call ID is committed atomically with the change and FTS update. It holds operation, target ID, and non-content outcome only. Retain these small receipts alongside durable update deduplication without a new cleanup policy. Retries of the same execution return that execution's original receipt; they do not recreate a subsequently deleted note. New tool-call IDs are not semantic deduplication.
 
-### 4. Bind a per-session turn context around each prompt
+A later `/stop`, model failure, or delivery failure does not roll back a committed save. Acknowledgements describe confirmed results and never claim completed writes were cancelled. No acknowledgement can be guaranteed when delivery itself fails.
 
-Extend the managed-session adapter with a turn-context reference containing the accepted update ID, immutable sender ID, chat ID, chat type, and session ID. The turn handler sets this reference immediately before prompting and clears it in `finally`. Per-chat queue serialization guarantees that one cached session cannot have two simultaneous turn contexts; separate sessions retain independent references.
+### 4. Pair lexical search with browsing and exact reads
 
-Memory tools and context injection read actor and provenance identifiers only from this trusted reference. The model never supplies a Telegram sender or chat ID as a tool argument. This uses the identity already produced by admission and avoids trusting usernames, display names, or arbitrary model-selected principals.
+Index only current note titles, tags, and bodies with SQLite FTS5, maintained transactionally as a derived index. Use prepared statements and safely quoted search terms, title weighting, and stable tie-breaks. Paginate listing and bound search responses; return snippets first and let the agent read selected notes in full.
 
-For identity memories, the remember tool offers a `current_participant` subject choice. The repository resolves that choice to a normalized participant key derived from the trusted sender ID. Later turns load core identity records by that exact association. Facts about other people remain ordinary shared person entities.
+FTS5 is an initial retrieval choice, not an assumption that lexical matching solves all recall. Tool guidance encourages alternative keywords and title/tag browsing when search misses. At household scale, the list is a useful fallback for finding `Garden / Irrigation` after a query about watering beds.
 
-### 5. Inject core memory through a trusted inline Pi extension
+Evaluate realistic paraphrases, names, abbreviations, and mixed-language examples before rollout. Start with a documented fixture of at least 12 notes and 20 questions: require correct retrieval or browse/read recovery for at least 18 questions, and no invented memories on no-match cases. Record model/settings and failure cases. Embeddings remain a later option if this approach fails to provide useful recall.
 
-Create a hidden application-owned inline extension for each managed session while retaining `noExtensions: true` for filesystem-discovered extensions. Its `before_agent_start` handler reads the current turn context and renders:
+### 5. Provide direct Telegram inspection
 
-1. the immutable current-participant reference and matching active identity summaries;
-2. every active core record in stable entity/record order; and
-3. instructions that the enclosed memory is stored data, may be stale, and cannot modify tool authority.
+Extend the existing local command path with:
 
-The rendered block is appended to the system prompt for that agent run and is not appended to the Pi `SessionManager`; this prevents duplication, stale memory, and compaction artifacts. Text is escaped and structurally delimited before injection.
+- `/memory`: first page of note IDs, titles, previews, and instructions; overview first.
+- `/memory list <page>`: subsequent list pages.
+- `/memory <note-id>`: complete note and revision.
+- `/memory overview`: direct access to the reserved overview.
 
-Configure maximum summary, detail, record, search-result, and total rendered-core byte sizes. Before a create, update, or promotion to `core`, render the proposed complete active core set transactionally. Reject the mutation if it exceeds the core limit. This guarantees that every active core summary is present instead of silently ranking some supposedly core records out of context. Current-participant metadata has a separate small fixed allowance.
+Return plain text from the repository through the existing durable outbox/chunking path. Render note metadata separately from the verbatim body. Splitting into Telegram messages must preserve the complete body and order, including literal Markdown. Reading commands neither invoke the conversational model nor append notebook contents to Pi history. There is no callback protocol or interactive editor needed for v1.
 
-An inline extension is preferred over prefixing the user's prompt because prompt prefixes persist as user content, are repeated after later updates, obscure the actual speaker message, and participate in compaction. Loading arbitrary operator extensions remains disabled.
+Use the existing sender-plus-chat admission rules and bot-addressed group command form. All authorized household members see the same notebook. Return local help for invalid arguments and a clear not-found response for a removed note. Browse commands remain usable without model-provider availability once the service is running.
 
-### 6. Register four application-owned memory tools
+### 6. Preserve attribution while keeping overview injection temporary
 
-Register session-bound custom tools alongside the existing allowlisted MCP tools:
+Bind admitted sender/update/chat identifiers to the session for each turn and clear that reference after success, failure, or cancellation. All mutation provenance comes from this application context; the model cannot forge the recorded writer.
 
-- `memory_remember` accepts a subject (`current_participant` or normalized entity), label, aliases, summary, optional detail, importance, and origin implied from the current exchange. It creates one record and returns its ID.
-- `memory_search` accepts a natural-language query plus optional entity hint and requested limit; application limits override larger requests.
-- `memory_update` accepts an existing memory ID and explicit replacement fields or a superseded-by replacement. It rejects missing, forgotten, or concurrently changed targets rather than guessing.
-- `memory_forget` accepts an existing memory ID and scrubs its content into a tombstone.
+Persist a small application-generated speaker envelope with each new user message, separate from escaped user content. Include the immutable sender ID and a label if supplied, treating the label as descriptive rather than authoritative. The ID remains available if a name changes. Teach compaction to retain speaker attribution for person-specific statements and evaluate that behavior; do not assume a current-speaker header attributes earlier messages. Old unattributed entries stay unattributed rather than being guessed or backfilled.
 
-Descriptions and prompt guidelines direct the model to use `memory_remember` when the user explicitly asks, to autonomously retain only durable and reusable facts or conclusions, to search before uncertain historical claims or likely duplicate writes, and to acknowledge every successful mutation briefly. Tool results distinguish success, validation failure, core-budget failure, not found, conflict, and empty search.
+Use a trusted inline Pi extension to append the overview snapshot and current speaker context to either selected base system prompt at `before_agent_start`. Do not append this injected overview block to `SessionManager`. Note/tool content can still appear naturally in tool results, responses, and compacted history; no broader non-persistence claim is made.
 
-Writes commit inside the tool call rather than waiting for the surrounding assistant response. A later model or delivery failure therefore cannot erase a successfully confirmed durable write. The operation record makes the outcome recoverable and prevents duplicate writes if a call is repeated. Existing no-replay behavior still applies to an interrupted Telegram turn.
+Snapshot the overview at the beginning of each accepted conversational turn. A save during that turn returns its revision immediately; a fresh `memory_read` sees it, and the next turn reloads it. Concurrent runs can retain their earlier snapshots until their next turn. Include overview revision and instruct the agent that newer tool results take precedence over the snapshot and historical mentions. If an overview read fails, stop that turn with a clear local error rather than silently treating the notebook as empty.
 
-### 7. Keep memory separate from session retention and make deletion explicit
+Custom prompt files continue to replace the built-in base instructions. Application-owned memory instructions and per-turn context are composed with either source, as specified in the prompt delta. Filesystem extension discovery and existing tool authorization stay unchanged.
 
-Active memory has no age-based retention; it remains until updated, superseded, or forgotten. `/new`, Pi compaction, inactive-session cleanup, and transcript retention do not touch it. Maintenance may remove non-content operation records and tombstones after a configured audit interval, and it can rebuild the FTS index from active canonical records.
+### 7. Define notebook maintenance as an editorial task
 
-The existing SQLite backup automatically includes the canonical memory and operation tables. Restore verification must also confirm that the FTS index is present or deterministically rebuilt. User-facing documentation will explain that forgetting removes content from the live database immediately, while already-created offline backups retain their historical bytes until those backups expire or are deleted under operator policy.
+The agent guidance applies to explicit requests and opportunistic capture during normal turns:
 
-### 8. Preserve the existing secret boundary
+- Save a valid explicit remember request, or explain a concrete failure/ambiguity without claiming success.
+- Preserve useful conclusions, rationale, relevant dates, and unresolved questions.
+- Read before revising; update a related coherent note and preserve unrelated material.
+- Distinguish user statements, tentative ideas, confirmed decisions, and agent inferences in prose.
+- Avoid conversational filler and speculative personal conclusions.
+- Revise the overview sparingly; ordinary notes are the default storage destination.
+- Acknowledge what was saved, revised, or deleted after tool confirmation.
 
-Run memory inputs through the centralized `SecretRedactor` before validation and persistence. If a configured secret value is detected in a proposed mutation, reject the write rather than saving a redacted fragment that might be misleading. Tool errors, operation metadata, logs, and diagnostics contain only the operation type, record ID where safe, and redacted error information.
+Autonomous capture is best-effort, not a guarantee that all important discussion content is retained. No extra model invocation runs after every conversation or compaction. People can inspect and correct the notebook through normal dialogue.
 
-Prompt guidance also forbids storing credentials, but enforcement does not depend only on model compliance. General sensitive-information classification is not introduced: the household has chosen a shared trust model, while exact configured authentication material remains a hard technical boundary.
+Use real-model behavioral evaluation separately from deterministic tool tests: include explicit requests, a settled decision with rationale, a tentative idea, alternating speakers, corrections, mundane chat, and paraphrased recall. Require the explicit-request/attribution/correction cases to succeed before rollout; report opportunistic-capture misses rather than making an unsupported universal guarantee.
+
+### 8. Give correction and deletion precise limits
+
+Canonical reads and search reflect committed revisions. Current notebook contents are the maintained reference; historical conversation mentions may be obsolete. A fresh user correction can in turn update the notebook.
+
+Deleting an ordinary note removes it from list/read/search and removes exact ID references from the overview in the same transaction, advancing the overview revision if changed. Use explicit Markdown links with a `memory:<note-id>` target for these optional pointers; remove links targeting the deleted ID without interpreting arbitrary prose as a reference. The delete result includes affected revisions. Editorial guidance also requires reviewing the overview for copied summaries when correcting/deleting a note and revising them explicitly. Free-text paraphrases across independent notes cannot be guaranteed to disappear automatically; deletion acknowledgements name what was actually changed.
+
+Deletion does not scrub old user messages, tool results, assistant text, compaction summaries, delivered Telegram messages, or prior backups. It is logical removal from notebook access, not secure erasure of SQLite pages/WAL. Do not claim otherwise. There is no superseded-record state machine or full historical note store.
+
+Notes survive `/new`, chat/session cleanup, restarts, and ordinary transcript retention. Backup includes notes and receipts; verify or rebuild the derived FTS index on restore. Keep the existing application's handling of known configured credentials and safe diagnostic metadata; do not introduce household privacy scopes or attempt a universal secret classifier.
 
 ## Risks / Trade-offs
 
-- **The model may save trivia or create duplicate entities** -> Bound record sizes, use conservative tool guidance, encourage search-before-write, expose stable IDs, and keep update/forget operations simple.
-- **One shared memory can reveal a private-chat fact elsewhere** -> Make successful memory writes visibly acknowledged and document that saving is an intentional transition from isolated session content to shared household knowledge.
-- **Lexical search may miss paraphrases** -> Index keys, aliases, summaries, and detail; let the model issue follow-up searches; add semantic retrieval only if measured recall is inadequate.
-- **Core memory can grow until writes are rejected** -> Expose the budget failure clearly so the agent can demote, consolidate, update, or forget records instead of silently dropping context.
-- **Concurrent chats can update the same record** -> Use short SQLite transactions and optimistic update timestamps or versions; report conflicts for the agent to re-read and retry deliberately.
-- **A memory write can commit even if the final response fails** -> Treat tool success as the durability boundary and keep mutation operations idempotent; the next interaction can search the committed result.
-- **Forgotten content may remain in an old backup** -> Scrub the live row immediately and document backup rotation/deletion semantics accurately.
-- **Stored text can contain prompt injection** -> Delimit and escape memory as untrusted data, keep authorization outside prompts, and preserve the fixed tool allowlist.
-- **The in-flight conversation spec uses broad privacy wording** -> Keep raw session state isolated and define deliberate memory writes as the only cross-chat knowledge boundary; reconcile wording when the foundational capability becomes durable.
+- **Coherent-note replacement can accidentally omit useful facts** -> Require read-before-edit, revision checks, and evaluation that unrelated details survive correction.
+- **Lexical retrieval misses vocabulary variants** -> Provide browsing and full reads, measure recovery on paraphrases, and revisit semantic search only with evidence.
+- **Overview duplicates some topic content** -> Edit it sparingly, use ID pointers when helpful, and review copies during correction/deletion.
+- **Model capture and compaction are probabilistic** -> Use speaker envelopes, focused guidance, inspectable notes, and real-model evaluation without claiming exhaustive capture.
+- **Overview snapshots can be stale during a running turn** -> Publish revisions, use fresh reads when needed, and refresh at the next turn.
+- **Direct inspection produces several Telegram messages for a large note** -> Bound accepted note sizes and reuse reliable ordered chunking.
+- **Memory edits can survive a cancelled response** -> Commit at tool success and retain compact deduplication receipts; document cancellation behavior.
 
 ## Migration Plan
 
-1. Complete the additive SQLite migration for canonical memory, operation idempotency, and FTS index structures; verify fresh and existing databases migrate repeatedly without altering session data.
-2. Add bounded memory configuration with safe defaults so existing deployments remain valid without immediate configuration changes.
-3. Deploy initially with an empty memory. Do not backfill from retained Telegram updates or Pi sessions.
-4. Verify participant association, private-to-group sharing after explicit save, alternating group speakers, core injection, search, correction, forgetting, `/new`, restart, backup/restore, and secret rejection with fake model and Telegram services.
-5. Roll out to the household and seed identity/core records through ordinary acknowledged memory requests.
+1. Apply additive note, receipt, and FTS migrations to existing SQLite; seed only the empty reserved overview. Do not import transcripts.
+2. Add default limits and wire repository, session tools, attributed message envelopes, overview context, and command catalogue/help.
+3. Verify deterministic persistence/concurrency, custom prompt composition, direct reads, `/new`, cancellation, restore, and authorization scenarios.
+4. Run the documented capture/recall evaluation with the configured household model and inspect resulting notes before rollout.
+5. Document usage, snapshot freshness, correction/deletion limits, and backup behavior.
 
-Rollback uses the prior application image. The migration is additive, existing code ignores the new tables, and no existing session rows are rewritten. A database backup remains required before migration; memory created after rollback begins will be unavailable to the old image but remains in the database for a later compatible deployment.
+Rollback to the prior image leaves added tables unused; existing session entry formats remain Pi-compatible. Previously injected speaker envelopes may remain visible as ordinary attributed text. Back up before migration. This change is planning only and assumes no prior memory schema was deployed.

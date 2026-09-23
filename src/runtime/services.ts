@@ -16,6 +16,8 @@ import {
   UpdateRepository,
 } from "../persistence/repositories.js";
 import type { AcceptedTelegramInput } from "../telegram/types.js";
+import type { MemoryRepository } from "../memory/repository.js";
+import type { MemoryTurnContextRegistry } from "../memory/context.js";
 import type { KeyedQueue } from "../dispatch/keyed-queue.js";
 import type { TelegramPoller } from "../telegram/poller.js";
 import type {
@@ -101,6 +103,10 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
     private readonly database: AppDatabase,
     private readonly capabilities: CapabilityCatalog,
     private readonly systemPrompt?: string,
+    private readonly memory?: {
+      repository: MemoryRepository;
+      contexts: MemoryTurnContextRegistry;
+    },
   ) {}
 
   start(signal: AbortSignal): Promise<void> {
@@ -110,6 +116,7 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
       new SessionEntryRepository(this.database),
       (sessionId) => this.capabilities.tools({ sessionId }),
       this.systemPrompt,
+      this.memory?.contexts,
     );
     this.#registry = new SessionRegistry(factory);
     this.#chats = new ChatRepository(this.database);
@@ -118,6 +125,7 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
       this.#registry,
       new OutboxRepository(this.database),
       this.#chats,
+      this.memory,
     );
     return Promise.resolve();
   }

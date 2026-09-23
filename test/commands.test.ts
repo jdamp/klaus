@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { AppDatabase } from "../src/persistence/database.js";
 import { ChatRepository, OutboxRepository } from "../src/persistence/repositories.js";
+import { MemoryRepository } from "../src/memory/repository.js";
 import {
   buildModelSelector,
   TelegramCommandHandler,
@@ -12,7 +13,7 @@ import type { AcceptedTelegramInput } from "../src/telegram/types.js";
 
 function command(
   updateId: string,
-  name: "start" | "help" | "status" | "model" | "compact" | "stop" | "new" | "unknown",
+  name: "start" | "help" | "status" | "model" | "compact" | "stop" | "new" | "memory" | "unknown",
   argumentsValue = "",
 ): AcceptedTelegramInput {
   return {
@@ -156,6 +157,104 @@ describe("Telegram local commands", () => {
     expect(chats.activeSession("1")).not.toBe(oldSession);
     expect(chats.modelPreference("1")).toEqual({ provider: "openai", modelId: "gpt-selected" });
     expect(responses(database)[0]?.text).toBe("Started a fresh conversation.");
+    database.close();
+  });
+
+  it("browses and reads literal shared memory without calling session control", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const chats = new ChatRepository(database);
+    const sessionId = chats.ensure("1", "private");
+    const memory = new MemoryRepository(database, {
+      overviewMaxBytes: 8 * 1024,
+      readMaxBytes: 16 * 1024,
+      listSearchMaxBytes: 16 * 1024,
+      maxResults: 20,
+      titleMaxBytes: 256,
+      tagMaxBytes: 64,
+      maxTags: 20,
+      previewMaxBytes: 240,
+    });
+    const created = memory.save(
+      { title: "Literal", body: "# Heading\n\n**keep markdown**" },
+      { senderId: "1", updateId: "seed" },
+      "seed-call",
+    );
+    if (!created.ok) throw new Error("seed failed");
+    const control = fakeControl();
+    control.status = async () => {
+      throw new Error("model/session path must not run");
+    };
+    const handler = new TelegramCommandHandler(
+      chats,
+      new OutboxRepository(database),
+      control,
+      memory,
+    );
+
+    await handler.handle(command("memory-list", "memory"), sessionId);
+    await handler.handle(command("memory-read", "memory", created.id), sessionId);
+    await handler.handle(command("memory-missing", "memory", "missing"), sessionId);
+    await handler.handle(command("memory-invalid", "memory", "list zero"), sessionId);
+
+    const output = responses(database);
+    expect(output[0]?.text).toContain("overview — Household overview");
+    expect(output[0]?.text).toContain(created.id);
+    expect(output[1]?.text).toContain("Revision: 1");
+    expect(output[1]?.text).toContain("# Heading\n\n**keep markdown**");
+    expect(output[1]?.parse_mode).toBeNull();
+    expect(output[2]?.text).toContain("not found");
+    expect(output[3]?.text).toContain("Usage:");
+    database.close();
+  });
+
+  it("delivers a complete large note in ordered plain-text chunks across chats", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const chats = new ChatRepository(database);
+    const firstSession = chats.ensure("1", "private");
+    const secondSession = chats.ensure("2", "group");
+    const memory = new MemoryRepository(database, {
+      overviewMaxBytes: 8 * 1024,
+      readMaxBytes: 16 * 1024,
+      listSearchMaxBytes: 16 * 1024,
+      maxResults: 20,
+      titleMaxBytes: 256,
+      tagMaxBytes: 64,
+      maxTags: 20,
+      previewMaxBytes: 240,
+    });
+    const body = `# Literal body\n${"abcde ".repeat(1_500)}END`;
+    const created = memory.save(
+      { title: "Long note", body },
+      { senderId: "1", updateId: "private-save" },
+      "private-save",
+    );
+    if (!created.ok) throw new Error("seed failed");
+    const handler = new TelegramCommandHandler(
+      chats,
+      new OutboxRepository(database),
+      fakeControl(),
+      memory,
+    );
+    const groupInput = {
+      ...command("group-read", "memory", created.id),
+      chatId: "2",
+      chatType: "group" as const,
+    };
+    await handler.handle(groupInput, secondSession);
+    expect(chats.activeSession("1")).toBe(firstSession);
+    const chunks = database.connection
+      .prepare(
+        "SELECT text,parse_mode,sequence FROM outbox_messages WHERE chat_id='2' ORDER BY sequence",
+      )
+      .all() as Array<{ text: string; parse_mode: string | null; sequence: number }>;
+    expect(chunks.length).toBeGreaterThan(2);
+    expect(chunks.every((chunk) => chunk.parse_mode === null)).toBe(true);
+    expect(chunks.map((chunk) => chunk.sequence)).toEqual(
+      Array.from({ length: chunks.length }, (_, index) => index),
+    );
+    expect(chunks.map((chunk) => chunk.text).join("")).toContain(body);
     database.close();
   });
 

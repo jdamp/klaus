@@ -218,6 +218,22 @@ describe("Telegram admission", () => {
         bot,
       ),
     ).toMatchObject({ kind: "command", command: { name: "new" } });
+    expect(
+      admitUpdate(
+        update({
+          message: {
+            ...base,
+            text: "/memory@klaus_bot overview",
+            entities: [{ type: "bot_command", offset: 0, length: 17 }],
+          },
+        }),
+        policy,
+        bot,
+      ),
+    ).toMatchObject({
+      kind: "command",
+      command: { name: "memory", arguments: "overview" },
+    });
   });
 
   it("parses private commands and rejects commands addressed to another bot", () => {
@@ -225,6 +241,7 @@ describe("Telegram admission", () => {
       update({
         message: {
           ...update().message!,
+          from: { id: 1, first_name: "Alex" },
           text: "/MODEL OpenAI/GPT",
           entities: [{ type: "bot_command", offset: 0, length: 6 }],
         },
@@ -234,6 +251,7 @@ describe("Telegram admission", () => {
     );
     expect(privateCommand).toMatchObject({
       kind: "command",
+      senderLabel: "Alex",
       command: { name: "model", arguments: "OpenAI/GPT" },
     });
     expect(
@@ -681,6 +699,7 @@ describe("Telegram long polling", () => {
           "compact",
           "stop",
           "new",
+          "memory",
         ]);
         scopes.push(scope.type);
       },

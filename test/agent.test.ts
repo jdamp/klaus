@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   HOUSEHOLD_SYSTEM_PROMPT,
+  attributionCompactionInstructions,
   loadHouseholdSystemPrompt,
   PiSessionFactory,
 } from "../src/agent/pi-runtime.js";
@@ -39,6 +40,15 @@ health: {}
 }
 
 describe("Pi runtime adapter", () => {
+  it("adds attribution requirements to manual and automatic compaction guidance", () => {
+    const automatic = attributionCompactionInstructions();
+    expect(automatic).toContain("immutable sender IDs");
+    expect(automatic).toContain("unattributed legacy statements");
+    const manual = attributionCompactionInstructions("Preserve project milestones.");
+    expect(manual).toContain("Preserve project milestones.");
+    expect(manual).toContain("tentative");
+  });
+
   it("creates sessions with zero built-in coding tools and persists restored entries", async () => {
     const root = await mkdtemp(join(tmpdir(), "klaus-pi-"));
     const config = parseConfig(yaml(root));

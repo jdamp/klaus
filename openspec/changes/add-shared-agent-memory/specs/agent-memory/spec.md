@@ -1,109 +1,127 @@
 ## Purpose
 
-Define a durable, shared household memory that preserves selected facts and distilled findings across isolated chat sessions while keeping model context bounded, searchable, correctable, and free of raw transcript archives or authentication secrets.
+Provide an inspectable household notebook of readable notes and a small always-present overview, preserving useful knowledge across conversations while supporting safe correction, browsing, and recall.
 
 ## ADDED Requirements
 
-### Requirement: Authorized chats share one household memory
-The system SHALL expose one logical household memory to every authorized participant in every authorized chat. Raw Pi session content SHALL remain isolated by chat, but a memory explicitly saved through the memory capability SHALL be treated as intentionally shared household knowledge regardless of the chat in which it originated.
+### Requirement: All admitted participants share the notebook
+The system SHALL provide one notebook that every authorized household participant can read, create notes in, revise, and delete from in any authorized chat. It SHALL apply the existing sender and chat admission checks without adding per-note ownership or participant visibility restrictions.
 
-#### Scenario: Memory saved in private chat is recalled in the family group
-- **WHEN** an authorized participant saves a household fact in a private chat and an authorized participant later recalls that fact in an authorized group
-- **THEN** the system makes the saved memory available without exposing the originating private conversation
+#### Scenario: A different participant revises a shared note
+- **WHEN** a participant saves a note in a private chat and another authorized participant reads and revises it in a group
+- **THEN** both interactions address the same note and later reads in either chat return the committed revision
 
-#### Scenario: Unauthorized update attempts memory access
-- **WHEN** an update fails the existing participant or chat admission policy
-- **THEN** the system neither reads nor mutates household memory for that update
+#### Scenario: An unauthorized interaction requests memory
+- **WHEN** an interaction fails sender or chat admission
+- **THEN** it cannot read or mutate the notebook
 
-### Requirement: Memory contains distilled records rather than conversation transcripts
-The system SHALL store durable memory as bounded records organized by a normalized topic or entity. Each record SHALL include a stable identifier, concise summary, optional distilled detail, importance, origin and source metadata, lifecycle state, and timestamps. The system MUST NOT add complete user messages, assistant responses, or raw conversation transcripts to the memory store or its search index merely because a conversation occurred.
+### Requirement: Memory consists of readable coherent notes
+Each note SHALL have a stable ID, title, prose body, optional tags, revision, timestamps, and lightweight source attribution. Titles and tags SHALL support informal organization around people, places, projects, devices, and findings without requiring a fixed entity taxonomy. The system MUST NOT automatically archive or index complete conversations as notebook content.
 
-#### Scenario: Discussion produces an important finding
-- **WHEN** the agent saves the outcome of a discussion as durable memory
-- **THEN** the resulting record contains a concise summary and only the useful distilled findings rather than a transcript of the discussion
+#### Scenario: A project discussion yields a decision
+- **WHEN** the agent saves its useful conclusion
+- **THEN** a readable note can preserve the decision, rationale, relevant dates, and unresolved questions together without requiring a separate record for every sentence
 
-#### Scenario: Ordinary conversation ends without a memory write
-- **WHEN** an accepted conversation completes without the user requesting memory and without the agent invoking a memory mutation tool
-- **THEN** the conversation creates no long-term memory record
+#### Scenario: No memory operation occurs
+- **WHEN** a conversation completes without a notebook write
+- **THEN** it does not automatically create a note or a searchable transcript
 
-### Requirement: The current participant is identified on every turn
-The system SHALL associate each accepted turn with the immutable Telegram sender identifier supplied by the admission boundary. It SHALL make that identifier and any active core identity memory associated with that participant available to the model for the current turn, including when successive turns in one group come from different participants.
+### Requirement: One bounded overview is available each turn
+The system SHALL maintain one readable and editable Household overview and include a snapshot of it at the beginning of each conversational turn, including after restart or a new session. Injecting that snapshot MUST NOT itself append it to persisted conversation history. Ordinary note storage SHALL be independent of the overview size limit.
 
-#### Scenario: Two household participants alternate in a group
-- **WHEN** two authorized participants send consecutive accepted group messages
-- **THEN** each model turn identifies the sender of that specific message and includes only that sender's associated identity facts as the current-participant identity
+#### Scenario: Overview space is exhausted
+- **WHEN** an attempted overview update exceeds its configured limit
+- **THEN** the operation fails explicitly without changing the previous overview and the same underlying information can still be saved as an ordinary note within ordinary note limits
 
-#### Scenario: Participant identity was previously remembered
-- **WHEN** a participant has an active core memory associating their immutable sender identifier with a household name
-- **THEN** a later turn from that sender presents the remembered name as part of the current-participant context
+#### Scenario: Overview changes during a turn
+- **WHEN** a tool commits an overview update after the current turn's snapshot was taken
+- **THEN** a subsequent explicit read returns the new revision and the next conversational turn loads the new overview, while the already-running turn can retain its earlier snapshot
 
-### Requirement: Core memory is always available within a fixed budget
-The system SHALL inject every active core-memory summary plus current-participant identity into each model turn without persisting the injected rendering as Pi session history. It SHALL enforce a configured maximum core-memory size and MUST reject a create or update operation that would make the complete core memory exceed that limit.
+#### Scenario: Overview is cleared
+- **WHEN** an authorized participant requests deletion of the overview and the delete operation succeeds
+- **THEN** the overview becomes empty with an advanced revision and remains empty after restart until explicitly saved again
 
-#### Scenario: A new chat session starts
-- **WHEN** an authorized chat starts a new Pi session after core memories already exist
-- **THEN** the first model turn in the new session includes the complete active core memory and current-participant identity
+### Requirement: The agent can browse and read exact note contents
+The system SHALL expose `memory_list` and `memory_read`. Listing SHALL provide bounded, paginated IDs, titles, previews, revisions, and timestamps with the overview first. Reading by ID SHALL return the complete stored title, body, tags, and revision without model paraphrasing. Every accepted note SHALL fit the configured full-read response limit.
 
-#### Scenario: Core memory would exceed its configured limit
-- **WHEN** a memory mutation would cause active core summaries to exceed the configured core-memory budget
-- **THEN** the system rejects that mutation without silently omitting an existing core record from later turns
+#### Scenario: Search wording is uncertain
+- **WHEN** the agent browses note titles and selects a relevant note ID
+- **THEN** it can read that note's full content without needing a successful keyword query
 
-#### Scenario: Stored text resembles an instruction
-- **WHEN** a stored memory contains imperative or tool-related text
-- **THEN** the system presents it as untrusted stored data and does not allow it to expand the model's executable tool authority
+#### Scenario: A note no longer exists
+- **WHEN** a reader supplies a deleted or unknown note ID
+- **THEN** the system returns not found without inventing content
 
-### Requirement: The agent can remember durable household knowledge
-The system SHALL expose an application-defined memory tool that lets the model create a bounded topic- or entity-based record on explicit user request or when the model determines that a durable fact, preference, relationship, routine, decision, or discussion finding is worth retaining. A successful write SHALL be durable immediately, idempotent for the same tool execution, and returned with its stable memory identifier.
+### Requirement: Search returns bounded matches from the notebook
+The system SHALL expose `memory_search` over current titles, tags, and bodies, returning ranked note IDs, titles, snippets, revisions, and timestamps within configured response limits. It SHALL distinguish no matches from an error and indicate when results were limited. It MUST NOT search raw conversation history.
 
-#### Scenario: User explicitly asks the agent to remember something
-- **WHEN** an authorized participant asks the agent to remember a valid household fact
-- **THEN** the agent invokes the memory tool, the system durably stores the distilled record, and the response acknowledges what was remembered
+#### Scenario: A topic has matching notes
+- **WHEN** the agent searches for matching words or a tag
+- **THEN** matching current notes are returned and can be opened through their IDs
 
-#### Scenario: Agent identifies a durable discussion decision
-- **WHEN** a discussion reaches a decision that will likely be useful in future interactions and the agent elects to retain it
-- **THEN** the agent may save a concise memory record and tells the participants that it did so
+#### Scenario: Search produces no matches
+- **WHEN** the query does not match any current note
+- **THEN** the tool returns an explicit empty result and the agent can browse or try other terms without claiming that no relevant knowledge necessarily exists
 
-#### Scenario: A completed memory tool call is encountered again
-- **WHEN** the same memory tool execution is submitted more than once because of retry or recovery behavior
-- **THEN** the system returns the original result without creating a duplicate record
+### Requirement: Saving and deletion are revision checked and durable
+The system SHALL expose `memory_save` for creating and replacing notes and `memory_delete` for removing them. Replacing or deleting an existing note SHALL require its expected revision and reject a stale revision without overwriting a newer change. Successful mutations SHALL be committed before success is returned and deduplicated for repeated execution of the same admitted tool call.
 
-### Requirement: Detailed memory is searchable by topic and entity
-The system SHALL expose an application-defined search tool over active non-core and core memory records. Search SHALL match normalized entities, topics, aliases, summaries, and distilled detail, and SHALL return bounded results containing stable identifiers, relevance information, summaries, details, and update timestamps. It MUST NOT search raw conversation history.
+#### Scenario: Concurrent editors read the same revision
+- **WHEN** one editor commits a replacement and another submits a replacement based on the older revision
+- **THEN** the second operation returns a conflict and preserves the first editor's content
 
-#### Scenario: User refers to a previous topic
-- **WHEN** the agent searches memory for a previously saved project, decision, person, place, device, routine, or preference
-- **THEN** the system returns the most relevant active matching records within the configured result count and size limits
+#### Scenario: A save is followed by cancellation
+- **WHEN** a save succeeds and the surrounding turn is subsequently stopped or fails
+- **THEN** the committed note remains durable and the system does not describe it as rolled back
 
-#### Scenario: Search has no matching memory
-- **WHEN** no active memory record matches the query
-- **THEN** the tool returns an explicit empty result rather than inventing remembered information
+#### Scenario: A completed create call is repeated
+- **WHEN** the same tool execution is retried
+- **THEN** it returns its original mutation outcome without creating another note or resurrecting a subsequently deleted note
 
-### Requirement: Remembered information can be corrected and forgotten
-The system SHALL expose tools that update or supersede an identified memory record and forget an identified memory record. Superseded or forgotten content MUST cease appearing in core context and search results immediately, while minimal non-content lifecycle metadata MAY remain for integrity and audit purposes.
+### Requirement: Capture preserves meaning and communicates outcomes
+The agent SHALL be instructed to act on explicit remember requests, inspect relevant notes before revising them, preserve unrelated useful information, distinguish tentative ideas from decisions, and acknowledge confirmed mutations in its completed reply. It SHALL also be instructed to save useful discussion conclusions opportunistically. Autonomous capture SHALL be treated as best-effort rather than exhaustive. Failed or ambiguous operations MUST NOT be described as successful.
 
-#### Scenario: Participant corrects an outdated preference
-- **WHEN** the agent updates or supersedes the identified record with the corrected preference
-- **THEN** subsequent core context and searches return the corrected active information and omit the obsolete content
+#### Scenario: User asks to remember a preference
+- **WHEN** the agent handles an unambiguous valid request to remember a preference
+- **THEN** it attempts an appropriate save and acknowledges the stored result or explains the concrete failure
 
-#### Scenario: Participant asks the agent to forget a record
-- **WHEN** the agent successfully forgets the identified memory
-- **THEN** the response acknowledges the deletion and later turns neither inject nor retrieve its content
+#### Scenario: An idea is still tentative
+- **WHEN** the agent elects to save an option discussed but not agreed
+- **THEN** the note identifies it as tentative rather than recording a settled decision
 
-### Requirement: Memory survives session changes and service restarts
-The system SHALL persist active memory independently of Pi sessions and SHALL include memory data in application backup and restore operations. Starting a new chat session, compacting session context, expiring old inactive sessions, or restarting the service MUST NOT remove active memory.
+#### Scenario: An existing topic is corrected
+- **WHEN** the agent revises a note after a correction
+- **THEN** it reads the current note, preserves unrelated still-useful content, and acknowledges the confirmed change
 
-#### Scenario: Chat invokes the new-session command
-- **WHEN** an authorized chat invokes `/new` after a memory was saved
-- **THEN** the new Pi session omits the prior working conversation but retains access to the saved household memory
+### Requirement: Correction and deletion have defined notebook scope
+Fresh reads and searches SHALL reflect committed saves and deletes. The agent SHALL be instructed to prefer current notebook revisions over older conversational references and to review the overview for copied summaries when correcting or deleting related notes. Deleted ordinary notes SHALL disappear from listing, reading, and search, and exact ID references to them SHALL be removed from the overview. Deletion MUST NOT be represented as erasure of previous conversation messages, compaction summaries, Telegram deliveries, backups, or all independently written paraphrases.
 
-#### Scenario: Database is backed up and restored
-- **WHEN** an application backup containing memory is restored into a compatible fresh runtime
-- **THEN** active core context, searchable detail, entity associations, and lifecycle state remain usable
+#### Scenario: Old search output remains in conversation history
+- **WHEN** a note has been revised or deleted after its earlier content was returned by a tool
+- **THEN** fresh notebook access returns the current revision or not found, without promising that historical conversation copies were erased
 
-### Requirement: Memory excludes authentication secrets
-The system MUST NOT persist configured authentication credentials, mounted secret values, provider tokens, or equivalent secrets in memory summaries, details, metadata, search indexes, tool results, logs, or diagnostics. Memory tools SHALL apply the application's secret redaction and rejection protections before committing a mutation.
+#### Scenario: A deleted note is linked from the overview
+- **WHEN** deletion of that note commits
+- **THEN** the overview's exact ID reference is removed and its revision advances if it changed
 
-#### Scenario: Memory input contains a configured secret
-- **WHEN** a memory mutation includes a value known to the application's secret redactor
-- **THEN** the system rejects the mutation or removes the secret before persistence and does not make the value searchable or prompt-visible
+### Requirement: Notebook state survives ordinary conversation maintenance
+Notes, revisions, the overview, and mutation deduplication state SHALL survive service restarts, backup/restore, and new-session commands. Session compaction and transcript-retention cleanup MUST NOT expire notebook content.
 
+#### Scenario: A restored service resumes use
+- **WHEN** the notebook database is backed up, restored, and started
+- **THEN** listing, exact reads, search, and overview loading expose the same saved knowledge and revisions
+
+#### Scenario: Old conversation records expire
+- **WHEN** ordinary session retention removes old working conversation records
+- **THEN** saved notes remain available independently of their original conversation
+
+### Requirement: Notebook bounds and existing application authority remain enforced
+The system SHALL validate note and response limits before committing content, preserve the existing configured-credential redaction boundary, and treat stored prose as data that cannot grant tools or change authorization. The application-recorded writer identity SHALL come from the admitted interaction rather than model-supplied metadata.
+
+#### Scenario: Oversized note is submitted
+- **WHEN** a proposed note cannot be returned fully within the configured read limit
+- **THEN** the save fails without partially replacing the existing note
+
+#### Scenario: Stored prose requests additional authority
+- **WHEN** a note contains instructions requesting an unavailable tool
+- **THEN** reading the note does not enable that tool or bypass admission

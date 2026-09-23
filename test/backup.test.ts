@@ -12,6 +12,18 @@ import {
   SessionEntryRepository,
   ToolAuditRepository,
 } from "../src/persistence/repositories.js";
+import { MemoryRepository } from "../src/memory/repository.js";
+
+const memoryLimits = {
+  overviewMaxBytes: 8 * 1024,
+  readMaxBytes: 16 * 1024,
+  listSearchMaxBytes: 16 * 1024,
+  maxResults: 20,
+  titleMaxBytes: 256,
+  tagMaxBytes: 64,
+  maxTags: 20,
+  previewMaxBytes: 240,
+};
 
 describe("SQLite backup and restore", () => {
   it("recovers sessions, outbox state, and tool audit state into a fresh runtime", async () => {
@@ -59,6 +71,13 @@ describe("SQLite backup and restore", () => {
     const completedAudit = audits.start("home", "light", { on: true });
     audits.finish(completedAudit, "success", { ok: true });
     audits.start("home", "vacuum", { start: true });
+    const memory = new MemoryRepository(source, memoryLimits);
+    const saved = memory.save(
+      { title: "House", body: "The heat pump is in the cellar." },
+      { senderId: "1", updateId: "memory-update" },
+      "memory-call",
+    );
+    if (!saved.ok) throw new Error("memory seed failed");
 
     expect(await backupDatabase(sourcePath, backupPath)).toBeGreaterThan(0);
     source.close();
@@ -84,6 +103,16 @@ describe("SQLite backup and restore", () => {
       { tool_name: "vacuum", status: "started" },
     ]);
     expect(new ToolAuditRepository(restored).markInterruptedIndeterminate()).toBe(1);
+    const restoredMemory = new MemoryRepository(restored, memoryLimits);
+    restoredMemory.rebuildSearchIndex();
+    expect(restoredMemory.read(saved.id)).toMatchObject({
+      title: "House",
+      revision: 1,
+    });
+    expect(restoredMemory.search({ query: "cellar" }).items[0]?.id).toBe(saved.id);
+    expect(
+      restored.connection.prepare("SELECT COUNT(*) AS count FROM memory_mutations").get(),
+    ).toMatchObject({ count: 1 });
     restored.close();
   });
 

@@ -1,31 +1,34 @@
 ## Why
 
-The household agent currently preserves bounded conversation state per chat, but it cannot retain durable knowledge independently of those sessions or recall important findings after a new session begins. A shared, curated memory will let the agent remember household facts, preferences, people, decisions, and discussion summaries without storing or searching a second copy of complete conversation history.
+The household needs a shared, readable notebook of useful knowledge that survives individual chat sessions. The agent should preserve preferences, decisions, and discussion findings, keep a small overview always available, and let participants inspect exactly what it remembers.
 
 ## What Changes
 
-- Add one durable household-wide memory shared by every authorized participant and chat.
-- Organize memory records by topic or entity, with a concise summary, optional distilled detail, importance, provenance, lifecycle state, and timestamps.
-- Make bounded core memory and the current speaker's trusted identity available on every model turn without copying it into Pi session history.
-- Add native tools that let the agent remember, search, update, and forget memory on explicit user request or when the model identifies durable information worth retaining.
-- Keep detailed memory searchable through local SQLite full-text search while excluding raw conversation transcripts from the memory index.
-- Keep Pi chat sessions isolated as working context while treating an explicitly saved memory as shared household knowledge that survives `/new` and is available from other authorized chats.
-- Preserve the existing prohibition on storing authentication secrets and require visible acknowledgement when memory is created, changed, or forgotten.
+- Add one household notebook containing readable topic notes with stable IDs, titles, prose bodies, optional tags, revisions, timestamps, and lightweight source attribution. Every authorized participant can read and maintain every note.
+- Keep one bounded `Household overview` note available at the start of each conversational turn. Ordinary notes remain independently storable when the overview is full.
+- Expose `memory_list`, `memory_read`, `memory_search`, `memory_save`, and `memory_delete` for browsing, retrieval, and revision-checked editing.
+- Add `/memory` for paginated browsing and `/memory <note-id>` for directly reading stored content without model paraphrasing or a model invocation.
+- Preserve speaker attribution in working conversation history and compaction so discussions can be summarized accurately when participants alternate.
+- Guide the agent to save explicit remember requests and useful discussion conclusions, distinguish tentative ideas from decisions, revise related notes, and acknowledge successful changes. Autonomous capture is best-effort.
+- Keep raw chat sessions separate while making deliberately saved knowledge shared. Define deletion as removal from the notebook and future retrieval, without promising erasure of earlier conversation mentions or backups.
+- Use the existing SQLite database and local full-text search, without adding transcript indexing, embeddings, a knowledge graph, or a background summarizer.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `agent-memory`: Defines shared household memory records, always-available core context, topic/entity search, controlled mutation tools, speaker identity, lifecycle behavior, and privacy boundaries between isolated session history and intentionally shared memory.
+- `agent-memory`: Shared readable notes, one overview, browse/read/search/save/delete tools, revision checks, capture guidance, and durable notebook behavior.
 
 ### Modified Capabilities
 
-None. The related `agent-conversations` capability currently exists only in the in-flight `build-home-chat-agent` change rather than under the durable spec inventory. This change defines the shared-memory exception explicitly in `agent-memory`; the capabilities must retain the distinction between isolated raw session content and intentionally saved household memory when the foundational change is archived.
+- `agent-conversations`: Permit shared saved knowledge alongside separate chat sessions, preserve historical speaker attribution, and retain notebook access across `/new`.
+- `telegram-session-commands`: Add `/memory` to the command catalogue and expose direct notebook browsing and reading.
+- `agent-prompt-configuration`: Define the configured prompt as the base instructions, with the same per-turn overview and speaker context added for built-in and custom prompts.
 
 ## Impact
 
-- Adds SQLite schema and repository behavior for memory records and a local full-text search index; it does not add a transcript archive, vector database, embedding provider, or background summarization service.
-- Extends the Pi runtime adapter with application-owned per-turn context injection and native memory tools while keeping coding tools and operator extensions disabled.
-- Extends Telegram identity handling or validated configuration so immutable sender IDs resolve to trusted household participant labels on each turn.
-- Adds memory configuration for context and result bounds, plus backup, restore, retention, audit, and operational documentation updates.
-- Requires tests for cross-chat sharing, speaker changes in group chats, bounded core context, search relevance, mutation acknowledgement, restart recovery, `/new` behavior, and secret exclusion.
+- Adds note and lightweight mutation-receipt storage plus an FTS5 index to the existing SQLite persistence and backup boundary.
+- Extends the Pi adapter, turn handling, application composition, and native tool registration with notebook access and per-turn context.
+- Extends Telegram command parsing, registration, help, and local command delivery with paginated plain-text notebook inspection.
+- Adds bounded note/overview/response configuration and operational documentation. No per-participant memory permissions, entity taxonomy, supersession workflow, or scheduled cleanup service is introduced.
+- Adds behavioral evaluation for useful capture, attribution, uncertainty preservation, correction, and recall, alongside repository and integration tests.

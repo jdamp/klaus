@@ -9,6 +9,7 @@
     "build": "npm run clean && tsc -p tsconfig.json",
     "start": "node --experimental-sqlite dist/src/cli.js",
     "dev": "tsx --experimental-sqlite src/cli.ts",
+    "eval:memory": "tsx --experimental-sqlite src/memory/eval-cli.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

@@ -83,6 +83,20 @@ rollout. Record the image digest, configuration revision, time, tester, and resu
       restart without rerunning the agent.
 - [ ] Logs, health output, SQLite rows, and Telegram replies contain no configured credential.
 - [ ] `/new` resets only the current chat's session.
+- [ ] An explicit harmless remember request creates a readable note; `/memory` lists it and
+      `/memory <id>` returns its literal body without a model call.
+- [ ] The same note is visible from an authorized private and group chat, while an unauthorized
+      interaction cannot inspect it.
+- [ ] A correction advances the note revision without dropping an unrelated detail; a stale edit
+      conflicts.
+- [ ] `/stop` after a confirmed memory save does not undo it, and the acknowledgement does not
+      claim rollback.
+- [ ] Clearing `overview` survives restart; ordinary note writes still work when the overview is
+      at its configured limit.
+- [ ] Deleting a test note removes it from current reads/search and exact overview links. Record
+      that historical messages and backups remain outside logical deletion.
+- [ ] Run the real-model capture and recall protocol in `docs/memory-evaluation.md` and record its
+      model, settings, score, opportunistic misses, and all failure cases.
 
 Do not enable locks, alarms, garage doors, or other critical infrastructure. Do not check off an
 action test unless the physical/service result was independently observed. If an action has an

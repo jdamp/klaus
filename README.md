@@ -51,10 +51,59 @@ as `/status` in a private chat.
 - `/stop` requests cancellation of the operation active in that chat. It does not affect another
   chat and cannot undo a tool action that completed before cancellation.
 - `/new` starts an empty conversation for the current chat while retaining its selected model.
+- `/memory` lists the first page of the shared household notebook. Use
+  `/memory list <page>` to continue browsing and `/memory <note-id>` (including
+  `/memory overview`) to read the exact stored note without model paraphrasing.
 
 Commands are handled locally and are not sent to the conversational model as user prompts.
 Authorization still requires both an allowlisted sender and an allowlisted chat; seeing a command
 menu does not grant access.
+
+## Shared household memory
+
+Klaus keeps one SQLite-backed notebook shared by every allowlisted household participant. It stores
+readable topic notes rather than conversation transcripts. Each note has a stable ID, title, prose
+body, optional tags, revision, timestamps, and the admitted sender/update that last changed it.
+The five model tools are `memory_list`, `memory_read`, `memory_search`, `memory_save`, and
+`memory_delete`. The agent is instructed to honor explicit remember requests, capture useful
+decisions and rationale, preserve uncertainty, read before revision, and avoid saving routine chat.
+Opportunistic capture remains best-effort; use `/memory` to inspect and correct the canonical notes.
+
+The reserved `overview` note is a small summary loaded at the start of each conversational turn.
+It is a snapshot: a write is immediately visible to a fresh `memory_read`, while another turn
+already in flight may retain its older overview until its next turn. Clearing the overview advances
+its revision and leaves it empty. Ordinary notes remain writable when the overview is full.
+
+Notebook mutations commit inside their tool calls. A later `/stop`, model error, or Telegram
+delivery failure does not undo a confirmed write. Revision checks prevent stale replacements and
+deletes. Deleting a note removes it from current list/read/search results and removes exact
+`memory:<id>` overview links, but does not erase old chat messages, tool results, summaries,
+delivered Telegram messages, SQLite remnants, or backups.
+
+The optional limits below use UTF-8 bytes. Startup fails instead of truncating if lowered values are
+incompatible with existing notes:
+
+```yaml
+memory:
+  overviewMaxBytes: 8192
+  readMaxBytes: 16384
+  listSearchMaxBytes: 16384
+  maxResults: 20
+  titleMaxBytes: 256
+  tagMaxBytes: 64
+  maxTags: 20
+  previewMaxBytes: 240
+```
+
+A complete browse/save/read/revise/delete smoke test is:
+
+1. Ask Klaus to remember a harmless preference and confirm the reply reports a successful save.
+2. Run `/memory`, open the returned ID, and compare its literal body and revision.
+3. Correct one detail in dialogue; reopen the ID and confirm its revision advanced while unrelated
+   details remained.
+4. Ask Klaus to delete the note; confirm `/memory <id>` reports not found.
+5. Save and clear `overview`, restart the service, and confirm it remains empty at its newer
+   revision.
 
 ## Household system prompt
 
@@ -70,6 +119,8 @@ The file is the complete system prompt, not an addition to the built-in prompt. 
 startup; missing, unreadable, empty, or whitespace-only files prevent startup. The application does
 not automatically discover `AGENTS.md` or other context files. Mount the file read-only with
 restricted permissions and restart after changing it.
+Application-owned memory guidance, the current speaker, and the current overview snapshot are still
+added per turn to either the built-in or configured base prompt.
 
 ## Generic MCP configuration
 

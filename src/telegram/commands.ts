@@ -12,6 +12,7 @@ export const TELEGRAM_COMMANDS: readonly TelegramCommandDefinition[] = [
   { name: "compact", description: "Compact the current conversation" },
   { name: "stop", description: "Stop the current operation" },
   { name: "new", description: "Start a fresh conversation" },
+  { name: "memory", description: "Browse notes or read one exactly: /memory [list <page>|<id>]" },
 ];
 
 const supported = new Set<string>([...TELEGRAM_COMMANDS.map((command) => command.name), "help"]);

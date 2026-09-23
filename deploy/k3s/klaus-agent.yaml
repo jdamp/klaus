@@ -18,6 +18,15 @@ data:
     # Optional: mount AGENTS.md through this ConfigMap and uncomment to replace the built-in prompt.
     # agent:
     #   systemPromptFile: /etc/klaus-agent/AGENTS.md
+    memory:
+      overviewMaxBytes: 8192
+      readMaxBytes: 16384
+      listSearchMaxBytes: 16384
+      maxResults: 20
+      titleMaxBytes: 256
+      tagMaxBytes: 64
+      maxTags: 20
+      previewMaxBytes: 240
     model:
       provider: openai-codex
       id: gpt-5.4

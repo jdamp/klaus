@@ -9,6 +9,8 @@ export type TelegramUser = {
   id: number;
   is_bot?: boolean;
   username?: string;
+  first_name?: string;
+  last_name?: string;
 };
 
 export type TelegramChat = {
@@ -80,7 +82,7 @@ export function isInlineKeyboardMarkup(value: unknown): value is TelegramInlineK
 }
 
 export type TelegramCommandName =
-  "start" | "help" | "status" | "model" | "compact" | "stop" | "new" | "unknown";
+  "start" | "help" | "status" | "model" | "compact" | "stop" | "new" | "memory" | "unknown";
 
 export type ParsedTelegramCommand = {
   name: TelegramCommandName;
@@ -93,6 +95,7 @@ type AcceptedTelegramInputBase = {
   chatId: string;
   chatType: TelegramChat["type"];
   senderId: string;
+  senderLabel?: string;
   messageId: string;
   text: string;
 };

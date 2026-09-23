@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { HealthServer } from "../src/health/server.js";
 import { Logger } from "../src/observability/logger.js";
 import { MaintenanceRepository } from "../src/persistence/maintenance.js";
+import { MemoryRepository } from "../src/memory/repository.js";
 import { AppDatabase } from "../src/persistence/database.js";
 import {
   ChatRepository,
@@ -66,6 +67,22 @@ describe("runtime operations", () => {
     outbox.sent(leased.id, "2");
     const audit = audits.start("home", "light", { private: true });
     audits.finish(audit, "success", { private: true });
+    const memory = new MemoryRepository(database, {
+      overviewMaxBytes: 8 * 1024,
+      readMaxBytes: 16 * 1024,
+      listSearchMaxBytes: 16 * 1024,
+      maxResults: 20,
+      titleMaxBytes: 256,
+      tagMaxBytes: 64,
+      maxTags: 20,
+      previewMaxBytes: 240,
+    });
+    const note = memory.save(
+      { title: "Durable", body: "Keep this through transcript retention." },
+      { senderId: "1", updateId: "memory" },
+      "memory",
+    );
+    if (!note.ok) throw new Error("memory seed failed");
     database.connection.exec(
       "UPDATE telegram_updates SET received_at='1970-01-01'; UPDATE tool_executions SET started_at='1970-01-01'; UPDATE outbox_messages SET created_at='1970-01-01'",
     );
@@ -78,6 +95,7 @@ describe("runtime operations", () => {
     expect(
       database.connection.prepare("SELECT dedupe_key,text FROM outbox_messages").get(),
     ).toMatchObject({ dedupe_key: "d", text: "" });
+    expect(memory.read(note.id)?.body).toContain("through transcript retention");
     database.close();
   });
 });

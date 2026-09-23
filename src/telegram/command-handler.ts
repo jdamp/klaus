@@ -7,6 +7,7 @@ import { enqueueResponse } from "../delivery/intents.js";
 import type { ChatRepository, OutboxRepository } from "../persistence/repositories.js";
 import { commandHelp } from "./commands.js";
 import type { AcceptedTelegramInput, TelegramInlineKeyboardMarkup } from "./types.js";
+import type { MemoryRepository } from "../memory/repository.js";
 
 export type AvailableModel = { provider: string; id: string };
 export type SessionStatus = {
@@ -141,6 +142,7 @@ export class TelegramCommandHandler {
     private readonly chats: ChatRepository,
     private readonly outbox: OutboxRepository,
     private readonly sessions: TelegramSessionControl,
+    private readonly memory?: MemoryRepository,
   ) {}
 
   async handle(input: AcceptedTelegramInput, sessionId: string): Promise<void> {
@@ -180,6 +182,9 @@ export class TelegramCommandHandler {
           this.chats.newSession(input.chatId);
           enqueueResponse(this.outbox, input, "Started a fresh conversation.");
           return;
+        case "memory":
+          this.#handleMemoryCommand(input);
+          return;
         case "stop":
           await this.stop(input, sessionId);
           return;
@@ -193,6 +198,70 @@ export class TelegramCommandHandler {
     } catch (error) {
       enqueueResponse(this.outbox, input, `Command failed: ${safeCommandError(error)}`);
     }
+  }
+
+  #handleMemoryCommand(input: AcceptedTelegramInput): void {
+    if (input.kind !== "command") return;
+    if (!this.memory) throw new Error("Household memory is unavailable");
+    const argumentsValue = input.command.arguments.trim();
+    if (!argumentsValue) {
+      this.#sendMemoryPage(input, 1);
+      return;
+    }
+    const parts = argumentsValue.split(/\s+/);
+    if (parts[0]?.toLowerCase() === "list") {
+      if (parts.length !== 2 || !/^\d+$/.test(parts[1] ?? "")) {
+        enqueueResponse(this.outbox, input, "Usage: /memory list <positive-page>");
+        return;
+      }
+      const page = Number(parts[1]);
+      if (page < 1) {
+        enqueueResponse(this.outbox, input, "Usage: /memory list <positive-page>");
+        return;
+      }
+      this.#sendMemoryPage(input, page);
+      return;
+    }
+    if (parts.length !== 1) {
+      enqueueResponse(this.outbox, input, "Usage: /memory [list <page>|<note-id>]");
+      return;
+    }
+    const note = this.memory.read(parts[0]!);
+    if (!note) {
+      enqueueResponse(this.outbox, input, `Memory note not found: ${parts[0]}`);
+      return;
+    }
+    const metadata = [
+      `Memory note: ${note.title}`,
+      `ID: ${note.id}`,
+      `Revision: ${note.revision}`,
+      `Tags: ${note.tags.length > 0 ? note.tags.join(", ") : "(none)"}`,
+      `Updated: ${note.updatedAt}`,
+      "",
+      "--- stored body (literal) ---",
+      note.body,
+    ].join("\n");
+    enqueueResponse(this.outbox, input, metadata);
+  }
+
+  #sendMemoryPage(input: AcceptedTelegramInput, page: number): void {
+    const result = this.memory!.list({ page });
+    if (result.items.length === 0) {
+      enqueueResponse(this.outbox, input, `Memory page ${page} is not available.`);
+      return;
+    }
+    const lines = [
+      `Shared household memory — page ${page}`,
+      ...result.items.flatMap((item) => [
+        "",
+        `${item.id} — ${item.title} (revision ${item.revision})`,
+        item.preview || "(empty)",
+      ]),
+      "",
+      "Open a note with /memory <note-id>.",
+      ...(result.nextPage ? [`Next page: /memory list ${result.nextPage}`] : []),
+    ];
+    enqueueResponse(this.outbox, input, lines.join("\n"));
   }
 
   async stop(input: AcceptedTelegramInput, sessionId: string): Promise<void> {

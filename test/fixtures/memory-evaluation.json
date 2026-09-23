@@ -1,0 +1,122 @@
+{
+  "notes": [
+    {
+      "id": "n01",
+      "title": "Garden / Irrigation",
+      "tags": ["garden"],
+      "body": "Decision: water the raised beds at dawn on Monday, Wednesday, and Friday. Rationale: lower evaporation. The rain-sensor option is still tentative."
+    },
+    {
+      "id": "n02",
+      "title": "Mira / Drinks",
+      "tags": ["person", "preference"],
+      "body": "Sender 101 (Mira) prefers decaffeinated coffee after 14:00 and dislikes oat milk."
+    },
+    {
+      "id": "n03",
+      "title": "Jonas / Cycling",
+      "tags": ["person", "transport"],
+      "body": "Sender 202 (Jonas) uses the blue cargo bike, nicknamed Blitz, for nursery pickup."
+    },
+    {
+      "id": "n04",
+      "title": "Heat pump",
+      "tags": ["home", "device"],
+      "body": "The heat pump is a Vaillant aroTHERM plus. The indoor unit is in the cellar. Service is due in November 2026."
+    },
+    {
+      "id": "n05",
+      "title": "School contacts",
+      "tags": ["school"],
+      "body": "The after-school programme is abbreviated OGS. Pickup changes must be sent before 11:30."
+    },
+    {
+      "id": "n06",
+      "title": "Recycling",
+      "tags": ["household"],
+      "body": "Gelbe Tonne collection is every second Thursday. Glass goes to the containers near Lindenplatz."
+    },
+    {
+      "id": "n07",
+      "title": "Guest room",
+      "tags": ["home"],
+      "body": "The Wi-Fi QR card is in the top drawer of the guest-room desk. Do not store the Wi-Fi password in memory."
+    },
+    {
+      "id": "n08",
+      "title": "Vet / Nori",
+      "tags": ["pet"],
+      "body": "Nori is the cat. The regular veterinary clinic is Tierarztpraxis am Park; carrier size is medium."
+    },
+    {
+      "id": "n09",
+      "title": "Holiday / Bretagne",
+      "tags": ["travel"],
+      "body": "Confirmed: travel by train to Brittany on 18 July 2027. Open question: Rennes or Saint-Malo for the final three nights."
+    },
+    {
+      "id": "n10",
+      "title": "Kitchen paint",
+      "tags": ["project"],
+      "body": "Selected colour: RAL 9010. Rationale: it matches the existing cabinet fronts. Buying paint is not yet scheduled."
+    },
+    {
+      "id": "n11",
+      "title": "Babysitter",
+      "tags": ["contact"],
+      "body": "Lea is usually available Tuesday evenings. Ask at least three days ahead; availability is not guaranteed."
+    },
+    {
+      "id": "n12",
+      "title": "Groceries",
+      "tags": ["preference"],
+      "body": "For pasta, the household usually buys whole-wheat penne. Mira's gluten-free food is a separate requirement."
+    }
+  ],
+  "questions": [
+    {
+      "id": "q01",
+      "question": "When should the vegetable beds be irrigated?",
+      "expected": ["n01"]
+    },
+    { "id": "q02", "question": "Warum gießen wir morgens?", "expected": ["n01"] },
+    { "id": "q03", "question": "Is the garden rain sensor already decided?", "expected": ["n01"] },
+    {
+      "id": "q04",
+      "question": "What coffee should I make Mira late in the day?",
+      "expected": ["n02"]
+    },
+    { "id": "q05", "question": "Who does not want oat milk?", "expected": ["n02"] },
+    { "id": "q06", "question": "Which bike is used for Kita pickup?", "expected": ["n03"] },
+    { "id": "q07", "question": "What does Blitz refer to?", "expected": ["n03"] },
+    { "id": "q08", "question": "Where is the heating indoor unit?", "expected": ["n04"] },
+    { "id": "q09", "question": "When is HVAC service due?", "expected": ["n04"] },
+    {
+      "id": "q10",
+      "question": "What is the deadline for an OGS pickup change?",
+      "expected": ["n05"]
+    },
+    { "id": "q11", "question": "Wann wird die gelbe Mülltonne geleert?", "expected": ["n06"] },
+    { "id": "q12", "question": "Where can a guest find the network QR card?", "expected": ["n07"] },
+    { "id": "q13", "question": "Which clinic treats the cat?", "expected": ["n08"] },
+    { "id": "q14", "question": "What size carrier does Nori use?", "expected": ["n08"] },
+    {
+      "id": "q15",
+      "question": "What remains undecided about the Brittany trip?",
+      "expected": ["n09"]
+    },
+    {
+      "id": "q16",
+      "question": "Which white was picked for the kitchen and why?",
+      "expected": ["n10"]
+    },
+    { "id": "q17", "question": "How much notice should Lea get?", "expected": ["n11"] },
+    {
+      "id": "q18",
+      "question": "What pasta do we normally buy, and whose exception matters?",
+      "expected": ["n12"]
+    },
+    { "id": "q19", "question": "What is our alarm code?", "expected": [], "no_match": true },
+    { "id": "q20", "question": "Which dentist does Jonas use?", "expected": [], "no_match": true }
+  ]
+}
