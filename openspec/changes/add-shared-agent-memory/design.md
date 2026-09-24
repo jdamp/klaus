@@ -8,7 +8,7 @@ The durable conversation, command, and prompt specs now exist. Their deltas in t
 
 **Goals:**
 
-- Provide a readable household notebook that all admitted participants can inspect and maintain.
+- Provide readable shared memory that all admitted participants can inspect and maintain.
 - Separate durable note storage from a small always-present overview.
 - Make edits safe across concurrent chats and expose exact stored text through deterministic reading interfaces.
 - Preserve attribution, uncertainty, and rationale when distilling discussions.
@@ -34,9 +34,15 @@ Guidance tells the agent to browse/read related notes before editing, preserve s
 
 SQLite is preferred because it is already the transactional storage and backup boundary. Markdown files would improve direct filesystem editing but introduce another persistence and indexing mechanism. Read tools and a local Telegram command provide inspectability without those costs. PostgreSQL and a remote memory service are unnecessary for a single household instance.
 
-### 2. Keep one explicit Household overview
+### 2. Keep one explicit Overview
 
-Seed a reserved `overview` note with title `Household overview`, an empty body, and revision 1. It contains enduring identities, preferences, household context, and optional references to active topics. It is readable/editable with the same tools as other notes and is listed first.
+Seed a reserved `overview` note with title `Overview`, an empty body, and revision 1. It contains enduring identities, preferences, shared context, and optional references to active topics. It is readable/editable with the same tools as other notes and is listed first.
+
+Installations that already contain the reserved title `Household overview` receive an additive
+migration that changes only the title and `updated_at`, advances the revision, and lets the
+existing FTS trigger refresh the index. The stable ID, body, tags, creation time, and source
+metadata remain unchanged. Advancing the revision makes the externally visible canonical change
+observable and prevents a stale overview replacement from silently overwriting it.
 
 Ordinary saves never consume overview space. Updating the overview is a separate, occasional editorial action using `memory_save` with its ID and revision. If the proposed overview exceeds its limit, leave its prior revision unchanged and return `overview_limit`; the agent can still save the underlying information in an ordinary note and must describe that outcome accurately. There is no automatic promotion or demotion mechanism.
 
@@ -77,7 +83,12 @@ Extend the existing local command path with:
 - `/memory <note-id>`: complete note and revision.
 - `/memory overview`: direct access to the reserved overview.
 
-Return plain text from the repository through the existing durable outbox/chunking path. Render note metadata separately from the verbatim body. Splitting into Telegram messages must preserve the complete body and order, including literal Markdown. Reading commands neither invoke the conversational model nor append notebook contents to Pi history. There is no callback protocol or interactive editor needed for v1.
+Return plain text from the repository through the existing durable outbox/chunking path. Head list
+pages with `Memory — page <n>` and show the reserved item as `overview — Overview`; do not add a
+`household` qualifier to memory or overview labels. Render note metadata separately from the
+verbatim body. Splitting into Telegram messages must preserve the complete body and order, including
+literal Markdown. Reading commands neither invoke the conversational model nor append notebook
+contents to Pi history. There is no callback protocol or interactive editor needed for v1.
 
 Use the existing sender-plus-chat admission rules and bot-addressed group command form. All authorized household members see the same notebook. Return local help for invalid arguments and a clear not-found response for a removed note. Browse commands remain usable without model-provider availability once the service is running.
 
@@ -92,6 +103,10 @@ Use a trusted inline Pi extension to append the overview snapshot and current sp
 Snapshot the overview at the beginning of each accepted conversational turn. A save during that turn returns its revision immediately; a fresh `memory_read` sees it, and the next turn reloads it. Concurrent runs can retain their earlier snapshots until their next turn. Include overview revision and instruct the agent that newer tool results take precedence over the snapshot and historical mentions. If an overview read fails, stop that turn with a clear local error rather than silently treating the notebook as empty.
 
 Custom prompt files continue to replace the built-in base instructions. Application-owned memory instructions and per-turn context are composed with either source, as specified in the prompt delta. Filesystem extension discovery and existing tool authorization stay unchanged.
+
+Application-owned memory instructions call the feature `shared memory`, `notes`, and
+`Overview`. This keeps access-model terminology out of generated note prose while leaving the
+base assistant's broader household role unchanged.
 
 ### 7. Define notebook maintenance as an editorial task
 
@@ -131,10 +146,13 @@ Notes survive `/new`, chat/session cleanup, restarts, and ordinary transcript re
 
 ## Migration Plan
 
-1. Apply additive note, receipt, and FTS migrations to existing SQLite; seed only the empty reserved overview. Do not import transcripts.
+1. Apply additive note, receipt, and FTS migrations to existing SQLite; seed only the empty reserved overview. Do not import transcripts. On installations with the legacy reserved title, rename it to `Overview` and advance its revision without changing its content or provenance.
 2. Add default limits and wire repository, session tools, attributed message envelopes, overview context, and command catalogue/help.
 3. Verify deterministic persistence/concurrency, custom prompt composition, direct reads, `/new`, cancellation, restore, and authorization scenarios.
-4. Run the documented capture/recall evaluation with the configured household model and inspect resulting notes before rollout.
+4. Run the documented capture/recall evaluation with the configured model and inspect resulting notes before rollout.
 5. Document usage, snapshot freshness, correction/deletion limits, and backup behavior.
 
-Rollback to the prior image leaves added tables unused; existing session entry formats remain Pi-compatible. Previously injected speaker envelopes may remain visible as ordinary attributed text. Back up before migration. This change is planning only and assumes no prior memory schema was deployed.
+Rollback to an image from before the label migration leaves the additive schema readable, but that
+image expects the legacy overview title and cannot safely replace the migrated overview. Restore the
+pre-upgrade backup for a complete rollback. Existing session entry formats remain Pi-compatible,
+and previously injected speaker envelopes may remain visible as ordinary attributed text.

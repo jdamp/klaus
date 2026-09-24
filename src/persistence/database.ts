@@ -158,7 +158,12 @@ const migrations = [
     END;
     INSERT OR IGNORE INTO memory_notes(
       id,title,body,tags_json,revision,created_at,updated_at
-    ) VALUES ('overview','Household overview','','[]',1,datetime('now'),datetime('now'));`,
+    ) VALUES ('overview','Overview','','[]',1,datetime('now'),datetime('now'));`,
+  `UPDATE memory_notes
+     SET title='Overview',
+         revision=revision+1,
+         updated_at=datetime('now')
+     WHERE id='overview' AND title='Household overview';`,
 ] as const;
 
 export class AppDatabase {

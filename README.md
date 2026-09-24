@@ -51,7 +51,7 @@ as `/status` in a private chat.
 - `/stop` requests cancellation of the operation active in that chat. It does not affect another
   chat and cannot undo a tool action that completed before cancellation.
 - `/new` starts an empty conversation for the current chat while retaining its selected model.
-- `/memory` lists the first page of the shared household notebook. Use
+- `/memory` lists the first page of shared memory. Use
   `/memory list <page>` to continue browsing and `/memory <note-id>` (including
   `/memory overview`) to read the exact stored note without model paraphrasing.
 
@@ -59,9 +59,9 @@ Commands are handled locally and are not sent to the conversational model as use
 Authorization still requires both an allowlisted sender and an allowlisted chat; seeing a command
 menu does not grant access.
 
-## Shared household memory
+## Shared memory
 
-Klaus keeps one SQLite-backed notebook shared by every allowlisted household participant. It stores
+Klaus keeps one SQLite-backed memory shared by every allowlisted participant. It stores
 readable topic notes rather than conversation transcripts. Each note has a stable ID, title, prose
 body, optional tags, revision, timestamps, and the admitted sender/update that last changed it.
 The five model tools are `memory_list`, `memory_read`, `memory_search`, `memory_save`, and
@@ -69,7 +69,7 @@ The five model tools are `memory_list`, `memory_read`, `memory_search`, `memory_
 decisions and rationale, preserve uncertainty, read before revision, and avoid saving routine chat.
 Opportunistic capture remains best-effort; use `/memory` to inspect and correct the canonical notes.
 
-The reserved `overview` note is a small summary loaded at the start of each conversational turn.
+The reserved `Overview` note (stable ID `overview`) is a small summary loaded at the start of each conversational turn.
 It is a snapshot: a write is immediately visible to a fresh `memory_read`, while another turn
 already in flight may retain its older overview until its next turn. Clearing the overview advances
 its revision and leaves it empty. Ordinary notes remain writable when the overview is full.

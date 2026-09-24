@@ -29,7 +29,7 @@ threshold, no-match requirement, or required capture cases failed.
 3. Ask every recall question verbatim in its specified chat. The agent may search directly or
    browse and read when vocabulary differs.
 4. Score a case correct only when the answer is supported by the current note and attributes the
-   correct participant where applicable. For `no_match` cases, any invented household memory is a
+   correct participant where applicable. For `no_match` cases, any invented memory is a
    failure.
 5. Require at least 18 of 20 correct retrievals/browse-read recoveries and zero inventions across
    no-match cases. Record every miss, search query, browse fallback, and cited note ID.

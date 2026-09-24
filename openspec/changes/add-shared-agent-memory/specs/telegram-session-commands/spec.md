@@ -22,11 +22,11 @@ The system SHALL register the same visible command catalogue for private and gro
 ## ADDED Requirements
 
 ### Requirement: Users can inspect stored notes without invoking the model
-The system SHALL support `/memory` for the first notebook list page, `/memory list <page>` for numbered pages, and `/memory <note-id>` for complete stored note content, with `/memory overview` selecting the Household overview. Lists SHALL show stable IDs, titles, previews, and navigation instructions with the overview first. Note reads SHALL show revision metadata separately and reproduce the full stored body as plain text, split into ordered messages when necessary. These commands MUST NOT invoke the conversational model, add read content to Pi session history, or require model-provider availability after service startup.
+The system SHALL support `/memory` for the first note list page, `/memory list <page>` for numbered pages, and `/memory <note-id>` for complete stored note content, with `/memory overview` selecting `Overview`. Lists SHALL use the concise heading `Memory`, show stable IDs, titles, previews, and navigation instructions with the overview first, and MUST NOT add a `household` qualifier to memory or overview labels. Note reads SHALL show revision metadata separately and reproduce the full stored body as plain text, split into ordered messages when necessary. These commands MUST NOT invoke the conversational model, add read content to Pi session history, or require model-provider availability after service startup.
 
 #### Scenario: User browses the notebook
 - **WHEN** an authorized user sends `/memory`
-- **THEN** the bot returns the first list page, including the overview and instructions for opening notes or requesting further pages
+- **THEN** the bot returns `Memory — page 1` with `overview — Overview` first and instructions for opening notes or requesting further pages
 
 #### Scenario: User reads a note with Markdown
 - **WHEN** an authorized user sends `/memory <note-id>` for a note containing Markdown

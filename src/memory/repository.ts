@@ -464,12 +464,12 @@ export class MemoryRepository {
     id: string,
   ): Extract<MemoryMutationResult, { ok: false }> | undefined {
     if (!title) return { ok: false, error: "invalid", id, message: "title is required" };
-    if (id === OVERVIEW_ID && title !== "Household overview") {
+    if (id === OVERVIEW_ID && title !== "Overview") {
       return {
         ok: false,
         error: "invalid",
         id,
-        message: "the reserved overview title must remain Household overview",
+        message: "the reserved overview title must remain Overview",
       };
     }
     if (bytes(title) > this.limits.titleMaxBytes) {

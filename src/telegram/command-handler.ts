@@ -202,7 +202,10 @@ export class TelegramCommandHandler {
 
   #handleMemoryCommand(input: AcceptedTelegramInput): void {
     if (input.kind !== "command") return;
-    if (!this.memory) throw new Error("Household memory is unavailable");
+    if (!this.memory) {
+      enqueueResponse(this.outbox, input, "Memory is unavailable.");
+      return;
+    }
     const argumentsValue = input.command.arguments.trim();
     if (!argumentsValue) {
       this.#sendMemoryPage(input, 1);
@@ -251,7 +254,7 @@ export class TelegramCommandHandler {
       return;
     }
     const lines = [
-      `Shared household memory — page ${page}`,
+      `Memory — page ${page}`,
       ...result.items.flatMap((item) => [
         "",
         `${item.id} — ${item.title} (revision ${item.revision})`,

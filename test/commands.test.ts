@@ -193,18 +193,26 @@ describe("Telegram local commands", () => {
     );
 
     await handler.handle(command("memory-list", "memory"), sessionId);
+    await handler.handle(command("memory-overview", "memory", "overview"), sessionId);
     await handler.handle(command("memory-read", "memory", created.id), sessionId);
     await handler.handle(command("memory-missing", "memory", "missing"), sessionId);
     await handler.handle(command("memory-invalid", "memory", "list zero"), sessionId);
+    await new TelegramCommandHandler(chats, new OutboxRepository(database), control).handle(
+      command("memory-unavailable", "memory"),
+      sessionId,
+    );
 
     const output = responses(database);
-    expect(output[0]?.text).toContain("overview — Household overview");
+    expect(output[0]?.text).toContain("Memory — page 1");
+    expect(output[0]?.text).toContain("overview — Overview");
     expect(output[0]?.text).toContain(created.id);
-    expect(output[1]?.text).toContain("Revision: 1");
-    expect(output[1]?.text).toContain("# Heading\n\n**keep markdown**");
-    expect(output[1]?.parse_mode).toBeNull();
-    expect(output[2]?.text).toContain("not found");
-    expect(output[3]?.text).toContain("Usage:");
+    expect(output[1]?.text).toContain("Memory note: Overview");
+    expect(output[2]?.text).toContain("Revision: 1");
+    expect(output[2]?.text).toContain("# Heading\n\n**keep markdown**");
+    expect(output[2]?.parse_mode).toBeNull();
+    expect(output[3]?.text).toContain("not found");
+    expect(output[4]?.text).toContain("Usage:");
+    expect(output[5]?.text).toContain("Memory is unavailable");
     database.close();
   });
 

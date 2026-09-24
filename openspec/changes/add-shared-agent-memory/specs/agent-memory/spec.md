@@ -1,11 +1,11 @@
 ## Purpose
 
-Provide an inspectable household notebook of readable notes and a small always-present overview, preserving useful knowledge across conversations while supporting safe correction, browsing, and recall.
+Provide inspectable shared memory as readable notes with a small always-present overview, preserving useful knowledge across conversations while supporting safe correction, browsing, and recall.
 
 ## ADDED Requirements
 
 ### Requirement: All admitted participants share the notebook
-The system SHALL provide one notebook that every authorized household participant can read, create notes in, revise, and delete from in any authorized chat. It SHALL apply the existing sender and chat admission checks without adding per-note ownership or participant visibility restrictions.
+The system SHALL provide one shared memory that every authorized participant can read, create notes in, revise, and delete from in any authorized chat. It SHALL apply the existing sender and chat admission checks without adding per-note ownership or participant visibility restrictions.
 
 #### Scenario: A different participant revises a shared note
 - **WHEN** a participant saves a note in a private chat and another authorized participant reads and revises it in a group
@@ -27,7 +27,7 @@ Each note SHALL have a stable ID, title, prose body, optional tags, revision, ti
 - **THEN** it does not automatically create a note or a searchable transcript
 
 ### Requirement: One bounded overview is available each turn
-The system SHALL maintain one readable and editable Household overview and include a snapshot of it at the beginning of each conversational turn, including after restart or a new session. Injecting that snapshot MUST NOT itself append it to persisted conversation history. Ordinary note storage SHALL be independent of the overview size limit.
+The system SHALL maintain one readable and editable note with stable ID `overview` and canonical title `Overview`, and include a snapshot of it at the beginning of each conversational turn, including after restart or a new session. Injecting that snapshot MUST NOT itself append it to persisted conversation history. Ordinary note storage SHALL be independent of the overview size limit. An upgrade from the legacy title `Household overview` SHALL preserve the note body, tags, source metadata, and stable ID while advancing its revision.
 
 #### Scenario: Overview space is exhausted
 - **WHEN** an attempted overview update exceeds its configured limit
@@ -40,6 +40,10 @@ The system SHALL maintain one readable and editable Household overview and inclu
 #### Scenario: Overview is cleared
 - **WHEN** an authorized participant requests deletion of the overview and the delete operation succeeds
 - **THEN** the overview becomes empty with an advanced revision and remains empty after restart until explicitly saved again
+
+#### Scenario: Existing overview uses the legacy title
+- **WHEN** the memory-label migration encounters the reserved `overview` note titled `Household overview`
+- **THEN** it renames the note to `Overview`, advances its revision, updates `updated_at`, and preserves its body, tags, `created_at`, and source metadata
 
 ### Requirement: The agent can browse and read exact note contents
 The system SHALL expose `memory_list` and `memory_read`. Listing SHALL provide bounded, paginated IDs, titles, previews, revisions, and timestamps with the overview first. Reading by ID SHALL return the complete stored title, body, tags, and revision without model paraphrasing. Every accepted note SHALL fit the configured full-read response limit.

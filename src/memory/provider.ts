@@ -111,7 +111,7 @@ export class MemoryProvider implements CapabilityProvider {
 
   health(): Record<string, ComponentHealth> {
     try {
-      if (!this.repository.read("overview")) throw new Error("Household overview is missing");
+      if (!this.repository.read("overview")) throw new Error("Overview is missing");
       return { notebook: { status: "healthy" } };
     } catch (error) {
       return {

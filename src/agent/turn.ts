@@ -34,9 +34,9 @@ export class AgentTurnHandler {
         try {
           overview = this.memory.repository.read(OVERVIEW_ID);
         } catch {
-          throw new Error("Household overview is unavailable");
+          throw new Error("Memory overview is unavailable");
         }
-        if (!overview) throw new Error("Household overview is unavailable");
+        if (!overview) throw new Error("Memory overview is unavailable");
         contextToken = this.memory.contexts.set(sessionId, {
           chatId: input.chatId,
           senderId: input.senderId,
@@ -64,8 +64,8 @@ export class AgentTurnHandler {
       enqueueResponse(
         this.outbox,
         input,
-        error instanceof Error && error.message === "Household overview is unavailable"
-          ? "Household memory is unavailable, so this request was not sent to the model."
+        error instanceof Error && error.message === "Memory overview is unavailable"
+          ? "Memory is unavailable, so this request was not sent to the model."
           : "Sorry, I could not complete that request. No action will be retried automatically.",
       );
       throw new Error("Agent turn failed before a successful completion was recorded", {

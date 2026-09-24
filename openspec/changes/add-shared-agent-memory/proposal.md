@@ -4,8 +4,8 @@ The household needs a shared, readable notebook of useful knowledge that survive
 
 ## What Changes
 
-- Add one household notebook containing readable topic notes with stable IDs, titles, prose bodies, optional tags, revisions, timestamps, and lightweight source attribution. Every authorized participant can read and maintain every note.
-- Keep one bounded `Household overview` note available at the start of each conversational turn. Ordinary notes remain independently storable when the overview is full.
+- Add one shared memory containing readable topic notes with stable IDs, titles, prose bodies, optional tags, revisions, timestamps, and lightweight source attribution. Every authorized participant can read and maintain every note.
+- Keep one bounded `Overview` note available at the start of each conversational turn. Ordinary notes remain independently storable when the overview is full.
 - Expose `memory_list`, `memory_read`, `memory_search`, `memory_save`, and `memory_delete` for browsing, retrieval, and revision-checked editing.
 - Add `/memory` for paginated browsing and `/memory <note-id>` for directly reading stored content without model paraphrasing or a model invocation.
 - Preserve speaker attribution in working conversation history and compaction so discussions can be summarized accurately when participants alternate.
@@ -27,7 +27,7 @@ The household needs a shared, readable notebook of useful knowledge that survive
 
 ## Impact
 
-- Adds note and lightweight mutation-receipt storage plus an FTS5 index to the existing SQLite persistence and backup boundary.
+- Adds note and lightweight mutation-receipt storage plus an FTS5 index to the existing SQLite persistence and backup boundary, including an additive compatibility migration from the legacy reserved title `Household overview` to `Overview`.
 - Extends the Pi adapter, turn handling, application composition, and native tool registration with notebook access and per-turn context.
 - Extends Telegram command parsing, registration, help, and local command delivery with paginated plain-text notebook inspection.
 - Adds bounded note/overview/response configuration and operational documentation. No per-participant memory permissions, entity taxonomy, supersession workflow, or scheduled cleanup service is introduced.

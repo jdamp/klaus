@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The household system prompt is explicitly configurable
-The system SHALL use the built-in household base system prompt when no prompt file is configured. When an operator configures a prompt file, the system SHALL use that file's contents in place of the complete built-in base instructions for newly created agent sessions. Application-owned memory guidance, the current Household overview snapshot, and current-speaker context SHALL be composed with either base prompt at the start of each conversational turn; loading a custom prompt MUST NOT suppress these runtime additions.
+The system SHALL use the built-in household base system prompt when no prompt file is configured. When an operator configures a prompt file, the system SHALL use that file's contents in place of the complete built-in base instructions for newly created agent sessions. Application-owned memory guidance, the current overview snapshot, and current-speaker context SHALL be composed with either base prompt at the start of each conversational turn; loading a custom prompt MUST NOT suppress these runtime additions.
 
 #### Scenario: No prompt file is configured
 - **WHEN** the application starts without `agent.systemPromptFile`

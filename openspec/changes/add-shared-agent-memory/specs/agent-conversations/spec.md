@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Each Telegram chat has an isolated conversation
-The system SHALL maintain a distinct working agent conversation for each authorized Telegram chat. It MUST NOT automatically include another chat's raw messages, tool history, or conversation summary in that working context. Knowledge deliberately saved to the shared household notebook SHALL be available in every authorized chat, including knowledge distilled from private chats; this saved knowledge SHALL NOT be subject to participant-specific visibility restrictions.
+The system SHALL maintain a distinct working agent conversation for each authorized Telegram chat. It MUST NOT automatically include another chat's raw messages, tool history, or conversation summary in that working context. Knowledge deliberately saved to shared memory SHALL be available in every authorized chat, including knowledge distilled from private chats; this saved knowledge SHALL NOT be subject to participant-specific visibility restrictions.
 
 #### Scenario: Same user talks in private and group chats
 - **WHEN** an authorized user invokes the agent in both a private chat and the family group
@@ -12,7 +12,7 @@ The system SHALL maintain a distinct working agent conversation for each authori
 - **THEN** the saved note is available without importing the originating private transcript
 
 ### Requirement: A chat can start a new session
-The system SHALL provide an authorized command that starts a new conversation for the current chat without resetting any other chat, changing the invoking chat's durable model preference, or removing household notebook content. The new session SHALL load the current overview and retain access to saved notes.
+The system SHALL provide an authorized command that starts a new conversation for the current chat without resetting any other chat, changing the invoking chat's durable model preference, or removing shared memory content. The new session SHALL load the current overview and retain access to saved notes.
 
 #### Scenario: User starts a new group session
 - **WHEN** an authorized user invokes the new-session command in an authorized group
@@ -35,7 +35,7 @@ The system SHALL provide an authorized command that starts a new conversation fo
 ### Requirement: Working conversation retains speaker attribution
 The system SHALL attach application-supplied sender attribution to each newly accepted conversational message, persist it with that message, and expose the current sender for each turn. Compaction SHALL be instructed to preserve attribution for retained person-specific statements. Display labels SHALL be descriptive only and MUST NOT replace immutable sender IDs for attribution or authorization. The system MUST NOT guess authors of older messages that lack attribution.
 
-#### Scenario: Household members alternate messages
+#### Scenario: Participants alternate messages
 - **WHEN** two participants state different personal preferences in the same group
 - **THEN** the retained messages identify their respective senders so a later turn can attribute each preference correctly
 

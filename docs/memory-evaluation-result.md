@@ -15,7 +15,7 @@ Context allowance: 64,000 tokens; focused compaction case: 8,192 tokens
 Base prompt: built-in
 
 The evaluation used an isolated in-memory SQLite database and the synthetic fixture in
-`test/fixtures/memory-evaluation.json`. It did not read or modify the live household notebook.
+`test/fixtures/memory-evaluation.json`. It did not read or modify live memory.
 
 ## Results
 

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { AgentTurnHandler } from "../src/agent/turn.js";
+import { HOUSEHOLD_SYSTEM_PROMPT } from "../src/agent/pi-runtime.js";
 import { parseConfig } from "../src/config.js";
 import { MemoryTurnContextRegistry, memoryTurnSystemPrompt } from "../src/memory/context.js";
 import { MemoryProvider } from "../src/memory/provider.js";
@@ -42,7 +43,7 @@ describe("shared memory repository", () => {
     first.migrate();
     const memory = new MemoryRepository(first, limits);
     expect(memory.read(OVERVIEW_ID)).toMatchObject({
-      title: "Household overview",
+      title: "Overview",
       body: "",
       revision: 1,
     });
@@ -67,6 +68,52 @@ describe("shared memory repository", () => {
       revision: 2,
     });
     second.close();
+  });
+
+  it("migrates the legacy overview title without losing content or provenance", async () => {
+    const root = await mkdtemp(join(tmpdir(), "klaus-memory-title-migrate-"));
+    const path = join(root, "klaus.sqlite");
+    const legacy = new AppDatabase(path);
+    legacy.migrate();
+    legacy.connection
+      .prepare(
+        `UPDATE memory_notes SET
+           title='Household overview',
+           body='Keep this summary.',
+           tags_json='["important"]',
+           revision=7,
+           created_at='2025-01-02T03:04:05.000Z',
+           updated_at='2025-02-03T04:05:06.000Z',
+           source_sender_id='42',
+           source_update_id='legacy-update',
+           source_description='legacy source'
+         WHERE id='overview'`,
+      )
+      .run();
+    legacy.connection.prepare("DELETE FROM schema_migrations WHERE version=6").run();
+    legacy.close();
+
+    const upgraded = new AppDatabase(path);
+    upgraded.migrate();
+    const memory = new MemoryRepository(upgraded, limits);
+    expect(memory.read(OVERVIEW_ID)).toMatchObject({
+      id: OVERVIEW_ID,
+      title: "Overview",
+      body: "Keep this summary.",
+      tags: ["important"],
+      revision: 8,
+      createdAt: "2025-01-02T03:04:05.000Z",
+      source: {
+        senderId: "42",
+        updateId: "legacy-update",
+        description: "legacy source",
+      },
+    });
+    expect(memory.read(OVERVIEW_ID)?.updatedAt).not.toBe("2025-02-03T04:05:06.000Z");
+    expect(memory.search({ query: "Overview" }).items[0]?.id).toBe(OVERVIEW_ID);
+    upgraded.migrate();
+    expect(memory.read(OVERVIEW_ID)?.revision).toBe(8);
+    upgraded.close();
   });
 
   it("creates, reads, searches, lists, replaces, and revision-checks coherent notes", () => {
@@ -155,7 +202,7 @@ describe("shared memory repository", () => {
         {
           id: OVERVIEW_ID,
           expectedRevision: 1,
-          title: "Household overview",
+          title: "Overview",
           body: `See [boiler](memory:${ordinary.id}). Keep free prose mentioning ${ordinary.id}.`,
         },
         source,
@@ -167,7 +214,7 @@ describe("shared memory repository", () => {
         {
           id: OVERVIEW_ID,
           expectedRevision: 2,
-          title: "Household overview",
+          title: "Overview",
           body: "x".repeat(limits.overviewMaxBytes + 1),
         },
         source,
@@ -335,8 +382,15 @@ describe("memory tools and turn context", () => {
     };
     const composed = memoryTurnSystemPrompt("CUSTOM BASE", context);
     expect(composed).toContain("CUSTOM BASE");
-    expect(composed).toContain("Household overview snapshot revision 1");
+    expect(composed).toContain("Overview snapshot revision 1");
+    expect(composed).toContain("Maintain shared memory");
+    expect(composed).not.toContain("Household overview");
+    expect(composed).not.toContain("shared household notebook");
     expect(composed).toContain("explicit, unambiguous request to remember");
+    const builtIn = memoryTurnSystemPrompt(HOUSEHOLD_SYSTEM_PROMPT, context);
+    expect(builtIn).toContain("You are a private household assistant");
+    expect(builtIn).toContain("Maintain shared memory");
+    expect(builtIn).toContain("Overview snapshot revision 1");
     database.close();
   });
 
@@ -382,7 +436,7 @@ describe("memory tools and turn context", () => {
         {
           id: OVERVIEW_ID,
           expectedRevision: 1,
-          title: "Household overview",
+          title: "Overview",
           body: "Fresh overview.",
         },
         { senderId: "1", updateId: "overview-update" },
