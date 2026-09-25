@@ -3,6 +3,7 @@ import type {
   AcceptedTelegramInput,
   BotIdentity,
   ParsedTelegramCommand,
+  TelegramDocument,
   TelegramEntity,
   TelegramMessage,
   TelegramUpdate,
@@ -12,6 +13,9 @@ export type AdmissionPolicy = {
   allowedUsers: ReadonlySet<string>;
   allowedChats: ReadonlySet<string>;
 };
+
+const IMAGE_EXTENSIONS = /\.(?:jpe?g|png|webp|gif|apng|avif|tiff?|bmp)$/iu;
+const NEUTRAL_VISUAL_PROMPT = "Please respond to the attached image.";
 
 function entityText(text: string, entity: TelegramEntity): string {
   return text.slice(entity.offset, entity.offset + entity.length);
@@ -25,29 +29,43 @@ function targetsBot(text: string, entity: TelegramEntity, bot: BotIdentity): boo
   );
 }
 
-function withoutBotMentions(message: TelegramMessage, bot: BotIdentity): string {
-  let text = message.text ?? "";
-  const mentions = (message.entities ?? [])
+function withoutBotMentions(
+  text: string,
+  entities: readonly TelegramEntity[],
+  bot: BotIdentity,
+): string {
+  let cleaned = text;
+  const mentions = entities
     .filter((entity) => targetsBot(text, entity, bot))
     .sort((left, right) => right.offset - left.offset);
   for (const mention of mentions) {
-    text = text.slice(0, mention.offset) + text.slice(mention.offset + mention.length);
+    cleaned = cleaned.slice(0, mention.offset) + cleaned.slice(mention.offset + mention.length);
   }
-  return text.replace(/[ \t]{2,}/g, " ").trim();
+  return cleaned.replace(/[ \t]{2,}/g, " ").trim();
+}
+
+function captionOrText(
+  message: TelegramMessage,
+): { text: string; entities: readonly TelegramEntity[] } | undefined {
+  if (message.text !== undefined) return { text: message.text, entities: message.entities ?? [] };
+  if (message.caption !== undefined)
+    return { text: message.caption, entities: message.caption_entities ?? [] };
+  return undefined;
 }
 
 function messageCommand(
   message: TelegramMessage,
   bot: BotIdentity,
 ): ParsedTelegramCommand | undefined {
-  if (!message.text) return undefined;
-  const entity = (message.entities ?? []).find(
+  const source = captionOrText(message);
+  if (!source?.text) return undefined;
+  const entity = source.entities.find(
     (candidate) => candidate.type === "bot_command" && candidate.offset === 0,
   );
   if (!entity) return undefined;
   return parseTelegramCommand(
-    entityText(message.text, entity),
-    message.text.slice(entity.length),
+    entityText(source.text, entity),
+    source.text.slice(entity.offset + entity.length),
     bot.username,
   );
 }
@@ -57,10 +75,12 @@ function explicitlyTriggers(
   bot: BotIdentity,
   command: ParsedTelegramCommand | undefined,
 ): boolean {
-  if (!message.text) return false;
+  const source = captionOrText(message);
   if (command && command.name !== "unknown") return true;
   if (message.reply_to_message?.from?.id.toString() === bot.id) return true;
-  return (message.entities ?? []).some((entity) => targetsBot(message.text ?? "", entity, bot));
+  return Boolean(
+    source?.text && source.entities.some((entity) => targetsBot(source.text, entity, bot)),
+  );
 }
 
 function authorized(policy: AdmissionPolicy, chatId: string, senderId: string): boolean {
@@ -74,6 +94,23 @@ function senderLabel(user: {
 }): string | undefined {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
   return name || user.username;
+}
+
+function imageDocument(document: TelegramDocument): boolean {
+  return (
+    Boolean(document.mime_type?.toLowerCase().startsWith("image/")) ||
+    Boolean(document.file_name && IMAGE_EXTENSIONS.test(document.file_name))
+  );
+}
+
+function visualAttachment(message: TelegramMessage) {
+  if (message.photo && message.photo.length > 0) {
+    return { kind: "photo" as const, variants: message.photo };
+  }
+  if (message.document && imageDocument(message.document)) {
+    return { kind: "document" as const, document: message.document };
+  }
+  return undefined;
 }
 
 export function admitUpdate(
@@ -115,7 +152,21 @@ export function admitUpdate(
 
   if (!update.message) return undefined;
   const message = update.message;
-  if (!message.from || message.from.is_bot || !message.text?.trim()) return undefined;
+  if (!message.from || message.from.is_bot) return undefined;
+  if (
+    message.audio ||
+    message.voice ||
+    message.video ||
+    message.video_note ||
+    message.animation ||
+    message.sticker
+  )
+    return undefined;
+  if (message.document && !imageDocument(message.document)) return undefined;
+
+  const source = captionOrText(message);
+  const visual = visualAttachment(message);
+  if (!source?.text.trim() && !visual) return undefined;
 
   const chatId = message.chat.id.toString();
   const senderId = message.from.id.toString();
@@ -127,6 +178,13 @@ export function admitUpdate(
     return undefined;
   }
 
+  const groupText = source ? withoutBotMentions(source.text, source.entities, bot) : "";
+  const text =
+    message.chat.type === "private"
+      ? source?.text.trim() || (visual ? NEUTRAL_VISUAL_PROMPT : "")
+      : groupText || (visual ? NEUTRAL_VISUAL_PROMPT : "");
+  if (!text && !visual) return undefined;
+
   const base = {
     updateId: update.update_id.toString(),
     chatId,
@@ -134,7 +192,8 @@ export function admitUpdate(
     senderId,
     ...(label ? { senderLabel: label } : {}),
     messageId: message.message_id.toString(),
-    text: message.chat.type === "private" ? message.text.trim() : withoutBotMentions(message, bot),
+    text,
+    ...(visual ? { visual } : {}),
   };
   return command ? { kind: "command", ...base, command } : { kind: "message", ...base };
 }

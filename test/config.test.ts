@@ -35,9 +35,66 @@ describe("configuration and secrets", () => {
   it("loads valid security-sensitive settings and rejects omissions", () => {
     const config = parseConfig(validYaml("/tmp/klaus"));
     expect(config.telegram.allowedChats).toContain("-100789");
+    expect(config.telegram.visualInput).toEqual({
+      maxBytes: 10 * 1024 * 1024,
+      downloadTimeoutMs: 15_000,
+    });
     expect(config.mcp[0]?.id).toBe("home");
     expect(config.mcp[0]?.tools).toBeUndefined();
     expect(() => parseConfig("telegram: {}")).toThrow();
+  });
+
+  it("loads bounded optional image-generation settings without exposing provider details", () => {
+    const config = parseConfig(
+      validYaml("/tmp/klaus").replace(
+        "data:",
+        "imageGeneration:\n  backend:\n    type: openai-codex\n  promptMaxBytes: 2048\n  requestTimeoutMs: 60000\ndata:",
+      ),
+    );
+    expect(config.imageGeneration).toMatchObject({
+      backend: { type: "openai-codex" },
+      promptMaxBytes: 2048,
+      requestTimeoutMs: 60_000,
+      maxResponseBytes: 16 * 1024 * 1024,
+      maxImageBytes: 10 * 1024 * 1024,
+    });
+    expect(JSON.stringify(publicConfig(config))).not.toContain("authorization");
+    expect(() =>
+      parseConfig(
+        validYaml("/tmp/klaus").replace(
+          "data:",
+          "imageGeneration:\n  backend:\n    type: other\ndata:",
+        ),
+      ),
+    ).toThrow();
+    expect(() =>
+      parseConfig(
+        validYaml("/tmp/klaus").replace(
+          "data:",
+          "imageGeneration:\n  backend:\n    type: openai-codex\n  maxImageBytes: 0\ndata:",
+        ),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects unsafe visual input limits", () => {
+    const base = validYaml("/tmp/klaus").replace(
+      '  allowedChats: ["123", "456", "-100789"]',
+      '  allowedChats: ["123", "456", "-100789"]\n  visualInput:',
+    );
+    expect(() =>
+      parseConfig(
+        base.replace("  visualInput:\nmodel:", "  visualInput:\n    maxBytes: 0\nmodel:"),
+      ),
+    ).toThrow();
+    expect(() =>
+      parseConfig(
+        base.replace(
+          "  visualInput:\nmodel:",
+          "  visualInput:\n    downloadTimeoutMs: 120001\nmodel:",
+        ),
+      ),
+    ).toThrow();
   });
 
   it("normalizes an optional system prompt file and keeps its contents out of public config", () => {

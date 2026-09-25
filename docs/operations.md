@@ -85,3 +85,45 @@ binary cannot handle. This metadata cleanup does not alter chat authorization.
 
 Never copy only the main SQLite file from a running WAL database. Use the application backup
 command so committed WAL pages are included.
+
+## Visual input operations
+
+Klaus accepts JPEG, PNG, and WebP photos or image documents. Visual downloads are kept in memory and
+bounded by `telegram.visualInput.maxBytes` and `downloadTimeoutMs`; lower the byte limit if the
+SQLite volume or model context budget is constrained. Accepted image bytes are persisted inside Pi
+session entries as base64, so backups grow by more than the original image size. Verify the selected
+model supports image input before testing.
+
+In private chats, images are direct inputs. In groups, the image caption must contain a Telegram
+mention entity targeting Klaus, or the image must reply to a Klaus-authored message. Each Telegram
+album item is currently an independent turn. Unsupported formats, oversized files, malformed bytes,
+retrieval failures, and text-only models produce a non-retried local failure; they do not execute
+agent tools. Audio, video, animated images, and stickers are out of scope.
+
+## Generated image operations
+
+Image generation is optional and disabled when `imageGeneration` is absent. When enabled, it uses
+Pi's protected `openai-codex` OAuth state and exposes only the provider-neutral `generate_image`
+tool. Keep the limits bounded and size the persistent data volume for pending photo BLOBs:
+
+```yaml
+imageGeneration:
+  backend:
+    type: openai-codex
+  promptMaxBytes: 16384
+  requestTimeoutMs: 180000
+  maxResponseBytes: 16777216
+  maxImageBytes: 10485760
+```
+
+The tool result is `queued`, not `sent`. A photo is stored in SQLite before the result is returned,
+then uploaded through `sendPhoto`; Telegram retries reuse the stored bytes and never regenerate the
+image. A provider or Telegram outage degrades only image generation/delivery and must not make the
+core text service unready. Health, logs, audits, session entries, and text columns contain no image
+bytes, provider response bodies, prompts, or credentials. Retention erases bytes from old sent and
+cancelled rows, while pending rows remain backup-recoverable.
+
+Before deploying an older binary, drain or cancel all pending photo rows because a text-only worker
+must not interpret a photo row as an empty text message. Re-authenticate the Pi Codex provider before
+live smoke testing; use disposable prompts, verify private/group reply targets, restart with a
+pending photo, and confirm no generation occurs during delivery retry.

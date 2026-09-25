@@ -1,4 +1,5 @@
 import { UserCancelledTurnError } from "../agent/turn.js";
+import { VisualInputError } from "./visual-input.js";
 import type { KeyedQueue } from "../dispatch/keyed-queue.js";
 import type { ChatRepository, UpdateRepository } from "../persistence/repositories.js";
 import { admitUpdate, type AdmissionPolicy } from "./admission.js";
@@ -66,6 +67,10 @@ export class TelegramRouter {
         } catch (error) {
           if (error instanceof UserCancelledTurnError) {
             this.updates.finish(input.updateId, "cancelled", error.message);
+            return;
+          }
+          if (error instanceof VisualInputError) {
+            this.updates.finish(input.updateId, "failed", error.message);
             return;
           }
           this.updates.finish(

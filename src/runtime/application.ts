@@ -15,6 +15,9 @@ import { HealthServer } from "../health/server.js";
 import { McpRegistry } from "../mcp/registry.js";
 import { AgentToolCatalog } from "../capabilities/catalog.js";
 import { MealieProvider } from "../integrations/mealie/provider.js";
+import { TurnContextRegistry } from "../agent/turn-context.js";
+import { CodexImageGenerator } from "../image-generation/codex.js";
+import { ImageGenerationProvider } from "../image-generation/provider.js";
 import { AppDatabase } from "../persistence/database.js";
 import {
   ChatRepository,
@@ -33,6 +36,7 @@ import { TelegramCommandHandler } from "../telegram/command-handler.js";
 import { TelegramPoller } from "../telegram/poller.js";
 import { TelegramRouter } from "../telegram/router.js";
 import { TelegramTypingActivity } from "../telegram/typing-activity.js";
+import { TelegramVisualInputLoader } from "../telegram/visual-input.js";
 import {
   CapabilityComponent,
   PersistenceComponent,
@@ -84,22 +88,53 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   }
 
   const audits = new ToolAuditRepository(database);
+  const outbox = new OutboxRepository(database, config.imageGeneration?.maxImageBytes);
+  const turnContexts = new TurnContextRegistry();
   const memoryRepository = new MemoryRepository(database, config.memory);
   const memoryContexts = new MemoryTurnContextRegistry();
   const memory = new MemoryProvider(memoryRepository, memoryContexts, audits, redactor);
   const mcp = new McpRegistry(config.mcp, audits, undefined, redactor);
-  const providers = [memory, mcp] as Array<MemoryProvider | McpRegistry | MealieProvider>;
+  const providers = [memory, mcp] as Array<
+    MemoryProvider | McpRegistry | MealieProvider | ImageGenerationProvider
+  >;
   if (config.mealie && mealieKey) {
     providers.push(new MealieProvider(config.mealie, mealieKey, audits, redactor));
   }
+  if (config.imageGeneration) {
+    const generator = new CodexImageGenerator(runtime, config.imageGeneration);
+    providers.push(
+      new ImageGenerationProvider(
+        generator,
+        outbox,
+        audits,
+        turnContexts,
+        config.imageGeneration.promptMaxBytes,
+        config.imageGeneration.maxImageBytes,
+        redactor,
+      ),
+    );
+  }
   const catalog = new AgentToolCatalog(providers);
   const capabilities = new CapabilityComponent(catalog);
-  const sessions = new SessionComponent(config, runtime, database, catalog, systemPrompt, {
-    repository: memoryRepository,
-    contexts: memoryContexts,
-  });
   const api = new TelegramHttpClient(telegramToken);
-  const outbox = new OutboxRepository(database);
+  const visualInput = new TelegramVisualInputLoader(
+    api,
+    config.telegram.visualInput.maxBytes,
+    config.telegram.visualInput.downloadTimeoutMs,
+  );
+  const sessions = new SessionComponent(
+    config,
+    runtime,
+    database,
+    catalog,
+    systemPrompt,
+    {
+      repository: memoryRepository,
+      contexts: memoryContexts,
+    },
+    visualInput,
+    turnContexts,
+  );
   const chats = new ChatRepository(database);
   const delivery = new OutboxWorker(outbox, api);
   const queue = new KeyedQueue();

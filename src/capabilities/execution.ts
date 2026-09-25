@@ -19,6 +19,11 @@ export type NativeExecutionOptions = {
   maxResultBytes: number;
 };
 
+export type NativeAuditContext = {
+  updateId?: string;
+  toolCallId?: string;
+};
+
 export class NativeToolExecutor {
   constructor(
     private readonly audits: ToolAuditRepository,
@@ -34,8 +39,15 @@ export class NativeToolExecutor {
     callback: (signal: AbortSignal) => Promise<T>,
     signal?: AbortSignal,
     overrides?: Partial<NativeExecutionOptions>,
+    auditContext?: NativeAuditContext,
   ): Promise<T | { truncated: true; content: string }> {
-    const auditId = this.audits.start(this.providerId, operation, this.redactor.redact(args));
+    const auditId = this.audits.start(
+      this.providerId,
+      operation,
+      this.redactor.redact(args),
+      auditContext?.updateId,
+      auditContext?.toolCallId,
+    );
     const timeout = AbortSignal.timeout(overrides?.timeoutMs ?? this.options.timeoutMs);
     const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
     try {
@@ -86,7 +98,7 @@ export function nativeTool<T>(options: {
     label: options.name,
     description: options.description,
     parameters: options.parameters,
-    execute: async (_toolCallId, params, signal) => {
+    execute: async (toolCallId, params, signal) => {
       const args = options.parse(params);
       try {
         const result = await options.executor.run(
@@ -95,6 +107,7 @@ export function nativeTool<T>(options: {
           (combined) => options.execute(args, combined),
           signal,
           options.timeoutMs ? { timeoutMs: options.timeoutMs } : undefined,
+          { toolCallId },
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],

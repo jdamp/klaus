@@ -143,6 +143,24 @@ describe("SQLite persistence", () => {
     ] as const;
     sessions.replace(sessionId, entries);
     expect(sessions.load(sessionId).map((entry) => entry.id)).toEqual(["a", "b"]);
+    const visualEntry = {
+      type: "message",
+      id: "visual",
+      parentId: "b",
+      timestamp: new Date(2).toISOString(),
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "describe this" },
+          { type: "image", mimeType: "image/png", data: "cG5n" },
+        ],
+        timestamp: 2,
+      },
+    };
+    sessions.replace(sessionId, [visualEntry] as never);
+    expect(JSON.stringify(sessions.load(sessionId))).toContain('"mimeType":"image/png"');
+    const otherSession = chats.ensure("2", "private");
+    expect(sessions.load(otherSession)).toEqual([]);
     chats.setModelPreference("1", "openai", "gpt-test");
     chats.ensure("2", "private");
     chats.setModelPreference("2", "anthropic", "claude-test");

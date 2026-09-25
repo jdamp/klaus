@@ -28,7 +28,7 @@ export class MaintenanceRepository {
         .run(value);
       this.database.connection
         .prepare(
-          `UPDATE outbox_messages SET text='',last_error=NULL
+          `UPDATE outbox_messages SET text='',media_blob=NULL,media_type=NULL,last_error=NULL
            WHERE created_at < ? AND state IN ('sent','cancelled')`,
         )
         .run(value);

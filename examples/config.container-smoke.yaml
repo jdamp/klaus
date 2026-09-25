@@ -3,10 +3,22 @@ telegram:
   allowedUsers: ["111111111"]
   allowedChats: ["111111111"]
   pollingTimeoutSeconds: 1
+  visualInput:
+    maxBytes: 10485760
+    downloadTimeoutMs: 15000
 
 # Optional: replace the built-in household prompt with an explicit UTF-8 file.
 # agent:
 #   systemPromptFile: /etc/klaus-agent/AGENTS.md
+
+# Optional text-to-image capability. Omit this block to keep image generation disabled.
+# imageGeneration:
+#   backend:
+#     type: openai-codex
+#   promptMaxBytes: 16384
+#   requestTimeoutMs: 180000
+#   maxResponseBytes: 16777216
+#   maxImageBytes: 10485760
 
 memory:
   overviewMaxBytes: 8192

@@ -14,6 +14,36 @@ const pathValue = z
 const mcpId = z.string().regex(/^[a-z][a-z0-9_-]*$/);
 const environmentName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 
+const imageGenerationSchema = z
+  .object({
+    backend: z.object({ type: z.literal("openai-codex") }).strict(),
+    promptMaxBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(64 * 1024)
+      .default(16 * 1024),
+    requestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .max(10 * 60_000)
+      .default(180_000),
+    maxResponseBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(64 * 1024 * 1024)
+      .default(16 * 1024 * 1024),
+    maxImageBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(10 * 1024 * 1024)
+      .default(10 * 1024 * 1024),
+  })
+  .strict();
+
 const mcpCommonSchema = {
   id: mcpId,
   tools: z.array(z.string().min(1)).optional(),
@@ -95,12 +125,24 @@ const configSchema = z
       allowedUsers: z.array(positiveDecimalId).min(1),
       allowedChats: z.array(decimalId).min(1),
       pollingTimeoutSeconds: z.number().int().min(1).max(50).default(30),
+      visualInput: z
+        .object({
+          maxBytes: z
+            .number()
+            .int()
+            .positive()
+            .max(20 * 1024 * 1024)
+            .default(10 * 1024 * 1024),
+          downloadTimeoutMs: z.number().int().positive().max(120_000).default(15_000),
+        })
+        .default({ maxBytes: 10 * 1024 * 1024, downloadTimeoutMs: 15_000 }),
     }),
     agent: z
       .object({
         systemPromptFile: pathValue.optional(),
       })
       .default({}),
+    imageGeneration: imageGenerationSchema.optional(),
     memory: z
       .object({
         overviewMaxBytes: z

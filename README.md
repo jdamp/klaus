@@ -59,6 +59,57 @@ Commands are handled locally and are not sent to the conversational model as use
 Authorization still requires both an allowlisted sender and an allowlisted chat; seeing a command
 menu does not grant access.
 
+## Telegram visual input
+
+Klaus accepts photos and image documents in JPEG, PNG, or WebP format. In a private chat, send an
+image directly or include a caption as the instruction. In a group, include a real Telegram mention
+of Klaus in the caption or reply to a Klaus message; text that merely resembles the bot name does
+not trigger processing. A captionless image uses a neutral instruction asking Klaus to respond to
+the attached image.
+
+Visual downloads are bounded and processed in memory. Configure the limits under `telegram.visualInput`:
+
+```yaml
+telegram:
+  visualInput:
+    maxBytes: 10485760
+    downloadTimeoutMs: 15000
+```
+
+The selected model must advertise image input; Klaus does not switch models automatically. Unsupported,
+oversized, malformed, unavailable, or model-incompatible images receive a local error and are not
+retried. Telegram album items are currently processed as independent updates. Accepted images are
+stored in Pi session history as base64 content, so they increase SQLite and backup size and may
+increase model context cost until compaction. Audio, video, stickers, and animated images are not
+supported.
+
+## Telegram image generation
+
+Image generation is disabled unless the optional `imageGeneration` block is configured. The first
+backend uses the Pi-managed `openai-codex` OAuth session and keeps Codex's endpoint, model, and
+account-routing details inside Klaus; the model-visible `generate_image` tool accepts only a bounded
+text prompt. A successful tool call means that one validated PNG or JPEG is durably queued for the
+originating Telegram chat, not that Telegram has already delivered it. The outbox retries uploads
+without regenerating images and deduplicates a repeated tool call.
+
+```yaml
+imageGeneration:
+  backend:
+    type: openai-codex
+  promptMaxBytes: 16384
+  requestTimeoutMs: 180000
+  maxResponseBytes: 16777216
+  maxImageBytes: 10485760
+```
+
+Re-authenticate the protected Pi provider location if the Codex OAuth refresh token is stale. Image
+provider failures degrade only this optional capability, while text conversations continue. Generated
+bytes are retained only in eligible outbox/backup data and are removed from sent or cancelled rows
+by retention cleanup; prompts, credentials, response bodies, and image bytes are not written to
+health output or diagnostics. Before rollback to an older binary, drain or cancel pending photo
+outbox rows because older workers do not understand photo intents. Use disposable prompts and inspect
+both capability and delivery health before enabling this in a household deployment.
+
 ## Shared memory
 
 Klaus keeps one SQLite-backed memory shared by every allowlisted participant. It stores

@@ -169,18 +169,25 @@ export type ToolOutcome =
 export class ToolAuditRepository {
   constructor(private readonly database: AppDatabase) {}
 
-  start(providerId: string, toolName: string, argumentsValue: unknown, updateId?: string): string {
+  start(
+    providerId: string,
+    toolName: string,
+    argumentsValue: unknown,
+    updateId?: string,
+    toolCallId?: string,
+  ): string {
     const serverId = providerId;
     const id = randomUUID();
     this.database.connection
       .prepare(
         `INSERT INTO tool_executions(
-          id,update_id,server_id,tool_name,arguments_json,status,started_at
-        ) VALUES (?,?,?,?,?,'started',?)`,
+          id,update_id,tool_call_id,server_id,tool_name,arguments_json,status,started_at
+        ) VALUES (?,?,?,?,?,?,'started',?)`,
       )
       .run(
         id,
         updateId ?? null,
+        toolCallId ?? null,
         serverId,
         toolName,
         JSON.stringify(argumentsValue),
@@ -212,41 +219,84 @@ export class ToolAuditRepository {
   }
 }
 
-export type OutboxDraft = {
+const MAX_OUTBOX_IMAGE_BYTES = 10 * 1024 * 1024;
+const PHOTO_DELIVERY_HOLD_AT = "9999-12-31T23:59:59.999Z";
+
+type OutboxCommon = {
   id?: string;
   dedupeKey: string;
   chatId: string;
   replyToMessageId?: string;
   sequence: number;
-  text: string;
-  parseMode?: TelegramParseMode;
-  replyMarkup?: TelegramInlineKeyboardMarkup;
   availableAt?: Date;
 };
 
-export type LeasedOutboxMessage = {
+export type OutboxDraft =
+  | (OutboxCommon & {
+      kind?: "text";
+      text: string;
+      parseMode?: TelegramParseMode;
+      replyMarkup?: TelegramInlineKeyboardMarkup;
+    })
+  | (OutboxCommon & {
+      kind: "photo";
+      bytes: Uint8Array;
+      mediaType: "image/png" | "image/jpeg";
+    });
+
+type LeasedCommon = {
   id: string;
   chatId: string;
   replyToMessageId?: string;
   sequence: number;
-  text: string;
-  parseMode?: TelegramParseMode;
-  replyMarkup?: TelegramInlineKeyboardMarkup;
   attempts: number;
 };
 
+export type LeasedOutboxMessage =
+  | (LeasedCommon & {
+      kind: "text";
+      text: string;
+      parseMode?: TelegramParseMode;
+      replyMarkup?: TelegramInlineKeyboardMarkup;
+    })
+  | (LeasedCommon & {
+      kind: "photo";
+      bytes: Uint8Array;
+      mediaType: "image/png" | "image/jpeg";
+      parseMode?: undefined;
+      replyMarkup?: undefined;
+    });
+
+function isImageMediaType(value: unknown): value is "image/png" | "image/jpeg" {
+  return value === "image/png" || value === "image/jpeg";
+}
+
 export class OutboxRepository {
-  constructor(private readonly database: AppDatabase) {}
+  constructor(
+    private readonly database: AppDatabase,
+    private readonly maxImageBytes = MAX_OUTBOX_IMAGE_BYTES,
+  ) {}
 
   enqueue(draft: OutboxDraft): boolean {
-    if (draft.replyMarkup && !isInlineKeyboardMarkup(draft.replyMarkup)) {
+    const photo = draft.kind === "photo" ? draft : undefined;
+    const text = draft.kind === "photo" ? undefined : draft;
+    const kind: "text" | "photo" = photo ? "photo" : "text";
+    if (text?.replyMarkup && !isInlineKeyboardMarkup(text.replyMarkup)) {
       throw new Error("Invalid Telegram inline keyboard");
+    }
+    if (photo) {
+      if (photo.bytes.byteLength === 0) throw new Error("Photo payload is empty");
+      if (photo.bytes.byteLength > this.maxImageBytes) {
+        throw new Error("Photo payload exceeds the configured byte limit");
+      }
+      if (!isImageMediaType(photo.mediaType)) throw new Error("Unsupported photo media type");
     }
     const result = this.database.connection
       .prepare(
         `INSERT OR IGNORE INTO outbox_messages(
-          id,dedupe_key,chat_id,reply_to_message_id,sequence,text,parse_mode,reply_markup_json,state,available_at,created_at
-        ) VALUES (?,?,?,?,?,?,?,?,'pending',?,?)`,
+          id,dedupe_key,chat_id,reply_to_message_id,sequence,text,parse_mode,reply_markup_json,
+          delivery_kind,media_blob,media_type,state,available_at,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,
       )
       .run(
         draft.id ?? randomUUID(),
@@ -254,31 +304,95 @@ export class OutboxRepository {
         draft.chatId,
         draft.replyToMessageId ?? null,
         draft.sequence,
-        draft.text,
-        draft.parseMode ?? null,
-        draft.replyMarkup ? JSON.stringify(draft.replyMarkup) : null,
+        text ? text.text : "",
+        text?.parseMode ?? null,
+        text?.replyMarkup ? JSON.stringify(text.replyMarkup) : null,
+        kind,
+        photo ? Buffer.from(photo.bytes) : null,
+        photo ? photo.mediaType : null,
         (draft.availableAt ?? new Date()).toISOString(),
         new Date().toISOString(),
       );
     return result.changes === 1;
   }
 
+  hasDedupe(dedupeKey: string): boolean {
+    return Boolean(
+      this.database.connection
+        .prepare("SELECT 1 AS found FROM outbox_messages WHERE dedupe_key=?")
+        .get(dedupeKey),
+    );
+  }
+
+  enqueuePhoto(input: {
+    id?: string;
+    dedupeKey: string;
+    chatId: string;
+    replyToMessageId?: string;
+    sequence: number;
+    bytes: Uint8Array;
+    mediaType: "image/png" | "image/jpeg";
+    availableAt?: Date;
+    holdForResponse?: boolean;
+  }): boolean {
+    const { holdForResponse, ...photo } = input;
+    return this.enqueue({
+      ...photo,
+      kind: "photo",
+      ...(holdForResponse ? { availableAt: new Date(PHOTO_DELIVERY_HOLD_AT) } : {}),
+    });
+  }
+
+  releasePhotosForUpdate(updateId: string, availableAt = new Date()): number {
+    const result = this.database.connection
+      .prepare(
+        `UPDATE outbox_messages
+         SET available_at=?
+         WHERE delivery_kind='photo'
+           AND available_at=?
+           AND dedupe_key LIKE ?`,
+      )
+      .run(availableAt.toISOString(), PHOTO_DELIVERY_HOLD_AT, `image:${updateId}:%`);
+    return Number(result.changes);
+  }
+
+  releaseHeldPhotosForInterruptedUpdates(availableAt = new Date()): number {
+    const result = this.database.connection
+      .prepare(
+        `UPDATE outbox_messages
+         SET available_at=?
+         WHERE delivery_kind='photo'
+           AND available_at=?
+           AND EXISTS (
+             SELECT 1 FROM telegram_updates AS updates
+             WHERE updates.state='indeterminate'
+               AND outbox_messages.dedupe_key LIKE 'image:' || updates.update_id || ':%'
+           )`,
+      )
+      .run(availableAt.toISOString(), PHOTO_DELIVERY_HOLD_AT);
+    return Number(result.changes);
+  }
+
   lease(now: Date, leaseMs: number): LeasedOutboxMessage | undefined {
-    this.database.connection.exec("BEGIN IMMEDIATE");
+    let transactionStarted = false;
     try {
+      this.database.connection.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
       this.database.connection
         .prepare(
           "UPDATE outbox_messages SET state='pending',lease_until=NULL WHERE state='leased' AND lease_until<=?",
         )
         .run(now.toISOString());
-      const row = this.database.connection
-        .prepare(
-          `SELECT id,chat_id,reply_to_message_id,sequence,text,parse_mode,reply_markup_json,attempts
-           FROM outbox_messages
-           WHERE state='pending' AND available_at<=?
-           ORDER BY created_at,sequence LIMIT 1`,
-        )
-        .get(now.toISOString()) as
+      const rowQuery = `SELECT id,chat_id,reply_to_message_id,sequence,text,parse_mode,reply_markup_json,
+                  delivery_kind,media_blob,media_type,attempts
+           FROM outbox_messages INDEXED BY outbox_pending_order_idx
+           WHERE state='pending' AND available_at<=?`;
+      const row = (this.database.connection
+        .prepare(`${rowQuery} AND delivery_kind='text' ORDER BY created_at,sequence LIMIT 1`)
+        .get(now.toISOString()) ??
+        this.database.connection
+          .prepare(`${rowQuery} ORDER BY created_at,sequence LIMIT 1`)
+          .get(now.toISOString())) as
         | {
             id: string;
             chat_id: string;
@@ -287,6 +401,9 @@ export class OutboxRepository {
             text: string;
             parse_mode: TelegramParseMode | null;
             reply_markup_json: string | null;
+            delivery_kind: "text" | "photo";
+            media_blob: Uint8Array | null;
+            media_type: string | null;
             attempts: number;
           }
         | undefined;
@@ -299,21 +416,48 @@ export class OutboxRepository {
           "UPDATE outbox_messages SET state='leased',attempts=attempts+1,lease_until=? WHERE id=?",
         )
         .run(new Date(now.getTime() + leaseMs).toISOString(), row.id);
-      this.database.connection.exec("COMMIT");
-      return {
+      const common = {
         id: row.id,
         chatId: row.chat_id,
         ...(row.reply_to_message_id ? { replyToMessageId: row.reply_to_message_id } : {}),
         sequence: row.sequence,
+        attempts: row.attempts + 1,
+      };
+      if (row.delivery_kind === "photo") {
+        if (!row.media_blob || !isImageMediaType(row.media_type)) {
+          throw new Error("Malformed stored photo outbox row");
+        }
+        const result = {
+          ...common,
+          kind: "photo" as const,
+          bytes: new Uint8Array(row.media_blob),
+          mediaType: row.media_type,
+        };
+        this.database.connection.exec("COMMIT");
+        return result;
+      }
+      if (row.delivery_kind !== "text" || row.media_blob || row.media_type) {
+        throw new Error("Malformed stored text outbox row");
+      }
+      const result = {
+        ...common,
+        kind: "text" as const,
         text: row.text,
         ...(row.parse_mode ? { parseMode: row.parse_mode } : {}),
         ...(row.reply_markup_json
           ? { replyMarkup: this.#parseReplyMarkup(row.reply_markup_json) }
           : {}),
-        attempts: row.attempts + 1,
       };
+      this.database.connection.exec("COMMIT");
+      return result;
     } catch (error) {
-      this.database.connection.exec("ROLLBACK");
+      if (transactionStarted) {
+        try {
+          this.database.connection.exec("ROLLBACK");
+        } catch {
+          // Preserve the original database error if SQLite already ended the transaction.
+        }
+      }
       throw error;
     }
   }

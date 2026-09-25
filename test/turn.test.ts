@@ -4,6 +4,7 @@ import { AgentTurnHandler, UserCancelledTurnError } from "../src/agent/turn.js";
 import { AppDatabase } from "../src/persistence/database.js";
 import { OutboxRepository } from "../src/persistence/repositories.js";
 import type { AcceptedTelegramInput } from "../src/telegram/types.js";
+import type { TelegramVisualInputLoader } from "../src/telegram/visual-input.js";
 
 const input: AcceptedTelegramInput = {
   kind: "message",
@@ -46,6 +47,93 @@ describe("agent turn translation", () => {
       .prepare("SELECT chat_id,text,parse_mode FROM outbox_messages")
       .get() as { chat_id: string; text: string; parse_mode: string | null };
     expect(row).toEqual({ chat_id: "10", text: "Done", parse_mode: "HTML" });
+    database.close();
+  });
+
+  it("passes a validated image and attributed caption to an image-capable model", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    let promptText = "";
+    let promptOptions: unknown;
+    const handler = new AgentTurnHandler(
+      {
+        consumeUserCancellation: () => false,
+        get: async () => ({
+          session: {
+            model: { input: ["text", "image"] },
+            prompt: async (text: string, options: unknown) => {
+              promptText = text;
+              promptOptions = options;
+            },
+            messages: [{ role: "assistant", content: [{ type: "text", text: "Seen" }] }],
+          },
+          persist: () => undefined,
+          dispose: () => undefined,
+        }),
+      } as never,
+      new OutboxRepository(database),
+      undefined,
+      undefined,
+      {
+        load: async () => ({ type: "image", mimeType: "image/png", data: "cG5n" }),
+      } as unknown as TelegramVisualInputLoader,
+    );
+    const visualInput: AcceptedTelegramInput = {
+      ...input,
+      text: "describe this",
+      visual: { kind: "photo", variants: [{ file_id: "photo", width: 1, height: 1 }] },
+    };
+
+    await handler.handle(visualInput, "session");
+    expect(promptText).toContain("describe this");
+    expect(promptOptions).toEqual({
+      images: [{ type: "image", mimeType: "image/png", data: "cG5n" }],
+    });
+    database.close();
+  });
+
+  it("rejects visual input before the model when the selected model is text-only", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    let loaded = false;
+    const handler = new AgentTurnHandler(
+      {
+        consumeUserCancellation: () => false,
+        get: async () => ({
+          session: {
+            model: { input: ["text"] },
+            prompt: async () => {
+              throw new Error("must not prompt");
+            },
+            messages: [],
+          },
+          persist: () => undefined,
+          dispose: () => undefined,
+        }),
+      } as never,
+      new OutboxRepository(database),
+      undefined,
+      undefined,
+      {
+        load: async () => {
+          loaded = true;
+          return { type: "image", mimeType: "image/png", data: "cG5n" };
+        },
+      } as unknown as TelegramVisualInputLoader,
+    );
+    await expect(
+      handler.handle(
+        {
+          ...input,
+          visual: { kind: "photo", variants: [{ file_id: "photo", width: 1, height: 1 }] },
+        },
+        "session",
+      ),
+    ).rejects.toThrow("does not support image input");
+    expect(loaded).toBe(false);
+    const row = database.connection.prepare("SELECT text FROM outbox_messages").get() as
+      { text: string } | undefined;
+    expect(row?.text).toContain("does not support image input");
     database.close();
   });
 

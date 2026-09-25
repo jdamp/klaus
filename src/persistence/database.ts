@@ -164,6 +164,14 @@ const migrations = [
          revision=revision+1,
          updated_at=datetime('now')
      WHERE id='overview' AND title='Household overview';`,
+  `ALTER TABLE outbox_messages ADD COLUMN delivery_kind TEXT NOT NULL DEFAULT 'text'
+      CHECK (delivery_kind IN ('text','photo'));
+    ALTER TABLE outbox_messages ADD COLUMN media_blob BLOB;
+    ALTER TABLE outbox_messages ADD COLUMN media_type TEXT
+      CHECK (media_type IS NULL OR media_type IN ('image/png','image/jpeg'));`,
+  `ALTER TABLE tool_executions ADD COLUMN tool_call_id TEXT;`,
+  `CREATE INDEX IF NOT EXISTS outbox_pending_order_idx
+      ON outbox_messages(state, created_at, sequence);`,
 ] as const;
 
 export class AppDatabase {

@@ -3,6 +3,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 
 import { PiSessionFactory } from "../agent/pi-runtime.js";
 import { SessionRegistry } from "../agent/session-registry.js";
+import type { TurnContextRegistry } from "../agent/turn-context.js";
 import { AgentTurnHandler } from "../agent/turn.js";
 import type { ServiceComponent } from "../app/lifecycle.js";
 import type { AppConfig } from "../config.js";
@@ -20,6 +21,7 @@ import type { MemoryRepository } from "../memory/repository.js";
 import type { MemoryTurnContextRegistry } from "../memory/context.js";
 import type { KeyedQueue } from "../dispatch/keyed-queue.js";
 import type { TelegramPoller } from "../telegram/poller.js";
+import type { TelegramVisualInputLoader } from "../telegram/visual-input.js";
 import type {
   AvailableModel,
   SessionStatus,
@@ -54,6 +56,7 @@ export class PersistenceComponent implements ServiceComponent {
   start(): Promise<void> {
     this.database.migrate();
     new UpdateRepository(this.database).markInterruptedIndeterminate();
+    new OutboxRepository(this.database).releaseHeldPhotosForInterruptedUpdates();
     new ToolAuditRepository(this.database).markInterruptedIndeterminate();
     return Promise.resolve();
   }
@@ -107,6 +110,8 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
       repository: MemoryRepository;
       contexts: MemoryTurnContextRegistry;
     },
+    private readonly visualInput?: TelegramVisualInputLoader,
+    private readonly turnContexts?: TurnContextRegistry,
   ) {}
 
   start(signal: AbortSignal): Promise<void> {
@@ -126,6 +131,8 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
       new OutboxRepository(this.database),
       this.#chats,
       this.memory,
+      this.visualInput,
+      this.turnContexts,
     );
     return Promise.resolve();
   }

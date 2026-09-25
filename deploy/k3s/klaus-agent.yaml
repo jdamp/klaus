@@ -15,9 +15,19 @@ data:
       allowedUsers: ["111111111", "222222222"]
       allowedChats: ["111111111", "222222222", "-1003333333333"]
       pollingTimeoutSeconds: 30
+      visualInput:
+        maxBytes: 10485760
+        downloadTimeoutMs: 15000
     # Optional: mount AGENTS.md through this ConfigMap and uncomment to replace the built-in prompt.
     # agent:
     #   systemPromptFile: /etc/klaus-agent/AGENTS.md
+    imageGeneration:
+      backend:
+        type: openai-codex
+      promptMaxBytes: 16384
+      requestTimeoutMs: 180000
+      maxResponseBytes: 16777216
+      maxImageBytes: 10485760
     memory:
       overviewMaxBytes: 8192
       readMaxBytes: 16384
@@ -91,7 +101,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 1Gi
+      storage: 2Gi
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -132,7 +142,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: klaus-agent
-          image: ghcr.io/example/klaus-agent:1.0.0
+          image: ttl.sh/klaus-agent-imagegen-orderfix-20260925091831:24h@sha256:f5aa9ffc6703f3db01cc3dc62cb50d7f6e4ac39eb65fe056c471431a18dcdce0
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/klaus-agent/config.yaml"]
           securityContext:

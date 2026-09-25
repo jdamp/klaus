@@ -11,6 +11,13 @@ export interface MessageSender {
     replyMarkup?: TelegramInlineKeyboardMarkup,
     parseMode?: TelegramParseMode,
   ): Promise<string>;
+  sendPhoto?(
+    chatId: string,
+    bytes: Uint8Array,
+    mediaType: "image/png" | "image/jpeg",
+    replyToMessageId?: string,
+    signal?: AbortSignal,
+  ): Promise<string>;
 }
 
 export class OutboxWorker implements ServiceComponent {
@@ -37,14 +44,26 @@ export class OutboxWorker implements ServiceComponent {
     const message = this.outbox.lease(now, this.leaseMs);
     if (!message) return false;
     try {
-      const sentId = await this.sender.sendMessage(
-        message.chatId,
-        message.text,
-        message.replyToMessageId,
-        signal,
-        message.replyMarkup,
-        message.parseMode,
-      );
+      let sentId: string;
+      if (message.kind === "photo") {
+        if (!this.sender.sendPhoto) throw new Error("Photo delivery is unavailable");
+        sentId = await this.sender.sendPhoto(
+          message.chatId,
+          message.bytes,
+          message.mediaType,
+          message.replyToMessageId,
+          signal,
+        );
+      } else {
+        sentId = await this.sender.sendMessage(
+          message.chatId,
+          message.text,
+          message.replyToMessageId,
+          signal,
+          message.replyMarkup,
+          message.parseMode,
+        );
+      }
       this.outbox.sent(message.id, sentId);
       this.#lastError = undefined;
     } catch (error) {
@@ -58,8 +77,13 @@ export class OutboxWorker implements ServiceComponent {
 
   async #run(signal: AbortSignal): Promise<void> {
     while (!signal.aborted) {
-      const worked = await this.runOnce(new Date(), signal);
-      if (!worked) await new Promise((resolve) => setTimeout(resolve, this.pollMs));
+      try {
+        const worked = await this.runOnce(new Date(), signal);
+        if (!worked) await new Promise((resolve) => setTimeout(resolve, this.pollMs));
+      } catch (error) {
+        this.#lastError = error instanceof Error ? error.message : "Delivery worker failed";
+        if (!signal.aborted) await new Promise((resolve) => setTimeout(resolve, this.pollMs));
+      }
     }
   }
 

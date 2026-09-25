@@ -14,6 +14,7 @@ import { TelegramPoller } from "../src/telegram/poller.js";
 import { TelegramRouter } from "../src/telegram/router.js";
 import type { TelegramUpdate } from "../src/telegram/types.js";
 import { TelegramTypingActivity } from "../src/telegram/typing-activity.js";
+import { VisualInputError } from "../src/telegram/visual-input.js";
 
 const bot = { id: "99", username: "klaus_bot" };
 const policy = { allowedUsers: new Set(["1", "2"]), allowedChats: new Set(["1", "-100"]) };
@@ -133,6 +134,49 @@ describe("Telegram HTTP client", () => {
     ]);
   });
 
+  it("resolves Telegram files and enforces streamed download bounds", async () => {
+    const requests: Array<{ url: string; redirect?: RequestRedirect }> = [];
+    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      requests.push({ url, ...(init?.redirect ? { redirect: init.redirect } : {}) });
+      if (url.endsWith("/getFile")) {
+        return new Response(JSON.stringify({ ok: true, result: { file_path: "photos/a" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3, 4]), {
+        status: 200,
+        headers: { "content-length": "4" },
+      });
+    }) as typeof fetch;
+    const client = new TelegramHttpClient("secret", fetcher);
+    await expect(client.getFile("file-id")).resolves.toEqual({ file_path: "photos/a" });
+    await expect(client.downloadFile("photos/a", 4, 1000)).resolves.toEqual(
+      new Uint8Array([1, 2, 3, 4]),
+    );
+    expect(requests).toEqual([
+      { url: "https://api.telegram.org/botsecret/getFile", redirect: "error" },
+      { url: "https://api.telegram.org/file/botsecret/photos/a", redirect: "error" },
+    ]);
+
+    const oversized = new TelegramHttpClient(
+      "secret",
+      async () => new Response(new Uint8Array([1, 2, 3, 4, 5]), { status: 200 }),
+    );
+    await expect(oversized.downloadFile("photos/a", 4, 1000)).rejects.toThrow(
+      "configured visual input limit",
+    );
+
+    const timeout = new TelegramHttpClient("secret", async (_input, init) => {
+      await new Promise<never>((_resolve, reject) =>
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }),
+      );
+      throw new Error("unreachable");
+    });
+    await expect(timeout.downloadFile("photos/a", 4, 1)).rejects.toThrow("timed out");
+  });
+
   it("omits a parse mode for plain text", async () => {
     let body: Record<string, unknown> | undefined;
     const fetcher = (async (_input: string | URL | Request, init?: RequestInit) => {
@@ -143,6 +187,31 @@ describe("Telegram HTTP client", () => {
     await new TelegramHttpClient("token", fetcher).sendMessage("1", "Plain");
 
     expect(body).toEqual({ chat_id: "1", text: "Plain" });
+  });
+
+  it("uploads a bounded generated photo as multipart without exposing its bytes in errors", async () => {
+    let request: { url: string; body: FormData; redirect?: RequestRedirect } | undefined;
+    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      request = {
+        url: typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+        body: init?.body as FormData,
+        ...(init?.redirect ? { redirect: init.redirect } : {}),
+      };
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 8 } }), { status: 200 });
+    }) as typeof fetch;
+    const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    await expect(
+      new TelegramHttpClient("token", fetcher).sendPhoto("1", bytes, "image/png", "5"),
+    ).resolves.toBe("8");
+    expect(request?.url).toBe("https://api.telegram.org/bottoken/sendPhoto");
+    expect(request?.redirect).toBe("error");
+    expect(request?.body.get("chat_id")).toBe("1");
+    expect(request?.body.get("reply_parameters")).toBe(JSON.stringify({ message_id: "5" }));
+    const photo = request?.body.get("photo");
+    expect(photo).toBeInstanceOf(File);
+    expect((photo as File).name).toBe("generated.png");
+    expect(await (photo as File).arrayBuffer()).toEqual(bytes.buffer);
   });
 });
 
@@ -327,6 +396,96 @@ describe("Telegram admission", () => {
         bot,
       ),
     ).toBeUndefined();
+  });
+
+  it("admits photos and image documents with captions while preserving group triggers", () => {
+    const photo = update({
+      message: {
+        message_id: 5,
+        from: { id: 1 },
+        chat: { id: 1, type: "private" },
+        photo: [{ file_id: "photo", width: 100, height: 100 }],
+        caption: "describe this",
+      },
+    });
+    expect(admitUpdate(photo, policy, bot)).toMatchObject({
+      kind: "message",
+      text: "describe this",
+      visual: { kind: "photo" },
+    });
+
+    const captionMention = update({
+      message: {
+        message_id: 5,
+        from: { id: 1 },
+        chat: { id: -100, type: "group" },
+        document: {
+          file_id: "document",
+          file_name: "screen.png",
+          mime_type: "image/png",
+        },
+        caption: "@klaus_bot inspect this",
+        caption_entities: [{ type: "mention", offset: 0, length: 10 }],
+      },
+    });
+    expect(admitUpdate(captionMention, policy, bot)).toMatchObject({
+      text: "inspect this",
+      visual: { kind: "document" },
+    });
+
+    const replyWithoutCaption = update({
+      message: {
+        message_id: 5,
+        from: { id: 1 },
+        chat: { id: -100, type: "group" },
+        photo: [{ file_id: "photo", width: 100, height: 100 }],
+        reply_to_message: { from: { id: 99, is_bot: true } },
+      },
+    });
+    expect(admitUpdate(replyWithoutCaption, policy, bot)?.text).toBe(
+      "Please respond to the attached image.",
+    );
+
+    const ambient = update({
+      message: {
+        message_id: 5,
+        from: { id: 1 },
+        chat: { id: -100, type: "group" },
+        photo: [{ file_id: "photo", width: 100, height: 100 }],
+        caption: "look at this",
+      },
+    });
+    expect(admitUpdate(ambient, policy, bot)).toBeUndefined();
+
+    const nonImage = update({
+      message: {
+        message_id: 5,
+        from: { id: 1 },
+        chat: { id: 1, type: "private" },
+        document: { file_id: "pdf", file_name: "file.pdf", mime_type: "application/pdf" },
+        caption: "ignore this",
+      },
+    });
+    expect(admitUpdate(nonImage, policy, bot)).toBeUndefined();
+  });
+
+  it("supports commands in private image captions without downloading the image", () => {
+    expect(
+      admitUpdate(
+        update({
+          message: {
+            message_id: 5,
+            from: { id: 1 },
+            chat: { id: 1, type: "private" },
+            photo: [{ file_id: "photo", width: 100, height: 100 }],
+            caption: "/status",
+            caption_entities: [{ type: "bot_command", offset: 0, length: 7 }],
+          },
+        }),
+        policy,
+        bot,
+      ),
+    ).toMatchObject({ kind: "command", command: { name: "status" }, visual: { kind: "photo" } });
   });
 
   it("ignores edited and bot-authored updates", () => {
@@ -654,6 +813,71 @@ describe("Telegram dispatch", () => {
     expect(
       database.connection.prepare("SELECT state FROM telegram_updates WHERE update_id='10'").get(),
     ).toMatchObject({ state: "indeterminate" });
+    database.close();
+  });
+
+  it("processes separate visual updates independently and deduplicates redelivery", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const queue = new KeyedQueue();
+    const seen: string[] = [];
+    const router = new TelegramRouter(
+      policy,
+      new UpdateRepository(database),
+      new ChatRepository(database),
+      queue,
+      typing(),
+      async (input) => {
+        seen.push(input.updateId);
+      },
+    );
+    const makeVisual = (updateId: number, messageId: number): TelegramUpdate => ({
+      update_id: updateId,
+      message: {
+        message_id: messageId,
+        from: { id: 1 },
+        chat: { id: 1, type: "private" },
+        photo: [{ file_id: `photo-${updateId}`, width: 1, height: 1 }],
+      },
+    });
+    expect(await router.route(makeVisual(40, 40), bot)).toBe(true);
+    expect(await router.route(makeVisual(40, 40), bot)).toBe(false);
+    expect(await router.route(makeVisual(41, 41), bot)).toBe(true);
+    await queue.close();
+    expect(seen).toEqual(["40", "41"]);
+    database.close();
+  });
+
+  it("records deterministic visual failures as failed rather than indeterminate", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const queue = new KeyedQueue();
+    const router = new TelegramRouter(
+      policy,
+      new UpdateRepository(database),
+      new ChatRepository(database),
+      queue,
+      typing(),
+      async () => {
+        throw new VisualInputError("oversized", "The image exceeds the configured size limit.");
+      },
+    );
+    await router.route(
+      update({
+        message: {
+          ...update().message!,
+          photo: [{ file_id: "photo", width: 1, height: 1 }],
+        },
+      }),
+      bot,
+    );
+    await queue.close();
+    expect(database.connection.prepare("SELECT state,failure FROM telegram_updates").get()).toEqual(
+      {
+        state: "failed",
+        failure: "The image exceeds the configured size limit.",
+      },
+    );
     database.close();
   });
 
