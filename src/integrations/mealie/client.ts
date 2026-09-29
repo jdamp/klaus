@@ -63,8 +63,11 @@ export class MealieClient {
     params: Record<string, string | number | boolean | undefined>,
     signal?: AbortSignal,
   ): Promise<unknown> {
-    const path = kind === "category" ? "categories" : kind === "tag" ? "tags" : "foods";
-    return this.json("GET", `/api/organizers/${path}?${query(params)}`, undefined, signal);
+    const path =
+      kind === "food"
+        ? "/api/foods"
+        : `/api/organizers/${kind === "category" ? "categories" : "tags"}`;
+    return this.json("GET", `${path}?${query(params)}`, undefined, signal);
   }
 
   async getOrganizer(kind: "category" | "tag", id: string, signal?: AbortSignal): Promise<unknown> {
@@ -151,6 +154,7 @@ export class MealieClient {
     const parsed = parseBody(text);
     if (!response.ok)
       throw new MealieHttpError(`Mealie HTTP ${response.status}`, response.status, parsed);
+    if (typeof parsed === "string") throw new Error("Mealie returned non-JSON data");
     return parsed as T;
   }
 

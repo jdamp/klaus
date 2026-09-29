@@ -86,6 +86,38 @@ describe("Mealie 3.28 recipe regression", () => {
     } satisfies Partial<NativeToolError>);
   });
 
+  it("resolves ingredient names through /api/foods and filters recipes", async () => {
+    const paths: string[] = [];
+    const fetcher: MealieFetch = async (input) => {
+      const url = new URL(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
+      paths.push(url.pathname);
+      if (url.pathname === "/api/foods") {
+        expect(url.searchParams.get("search")).toBe("lentils");
+        return new Response(JSON.stringify({ items: [{ id: "food-id", name: "lentils" }] }));
+      }
+      if (url.pathname === "/api/recipes") {
+        expect(url.searchParams.get("foods")).toBe("food-id");
+        return new Response(JSON.stringify({ total: 1, items: [detail] }));
+      }
+      throw new Error("Unexpected endpoint");
+    };
+    const service = new RecipeService(new MealieClient(config, "fixture-key", fetcher));
+    const result = await service.search({ ingredients: ["lentils"] }, new AbortController().signal);
+    expect(result.items.map((item) => item.slug)).toEqual(["lentils"]);
+    expect(paths).toEqual(["/api/foods", "/api/recipes"]);
+  });
+
+  it("rejects a 200 HTML fallback rather than treating it as JSON", async () => {
+    const client = new MealieClient(
+      config,
+      "fixture-key",
+      async () => new Response("<html>Not an API</html>"),
+    );
+    await expect(client.listOrganizers("food", { search: "lentils" })).rejects.toThrow("non-JSON");
+  });
+
   it("rejects a public URL with a path, credentials, query, or fragment", () => {
     const yaml = (url: string) =>
       `telegram:\n  tokenFile: /tmp/telegram\n  allowedUsers: ["1"]\n  allowedChats: ["1"]\nmodel:\n  provider: openai-codex\n  id: gpt-5.4\n  authPath: /tmp/auth.json\ndata:\n  directory: /tmp/data\nmcp: []\nskills:\n  paths: []\nhealth: {}\nmealie:\n  baseUrl: https://mealie.test\n  publicUrl: ${url}\n  apiKeyFile: /tmp/mealie-key\n`;
