@@ -81,7 +81,10 @@ rollout. Record the image digest, configuration revision, time, tester, and resu
       degradation.
 - [ ] If Mealie is enabled, verify scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI
       imports against disposable recipes; verify an existing-recipe reparse, filtered searches,
-      organizer create/rename/assign/clear, and recovery after a temporary outage.
+      organizer create/rename/assign/clear, and recovery after a temporary outage. OpenAI
+      normalization resolves existing food/unit IDs by exact name; `createMissingCatalogEntries`
+      defaults to false and must be explicitly enabled to create up to 20 missing shared food/unit
+      records for that operation. Inspect partial outcomes before any retry.
 - [ ] After terminating the pod during a turn, the recorded update is not replayed and any
       ambiguous tool execution is marked indeterminate.
 - [ ] After terminating the pod during delivery, a pending response is delivered once after

@@ -93,17 +93,24 @@ Read-only follow-up: text, exact category, and exact tag searches returned bound
 public links. A food-name filter initially failed because the integration used an obsolete URL;
 the `/api/foods` fix was deployed and the same read-only filter returned the reference recipe.
 The current pod's Mealie key was absent from its logs, public configuration, health response,
-SQLite tool audits, and persisted sessions. The live native catalogue exposed eight recipe/organizer
-tools and no deletion, upload, shopping-list, meal-planning, or generic HTTP tool. A second staged run (2026-09-29 UTC) imported one disposable recipe through the scraper path
-with 12 usable ingredients and six instructions. OpenAI reparsing of that recipe returned a
-partial outcome (Mealie HTTP 500); a read-back confirmed its 12 ingredients and instructions
-remained intact, but no structured foods appeared. One separate AI/imported attempt on the other
-operator-approved recipe succeeded with 11 usable ingredients and two instructions. Both public
-recipe pages returned HTTP 200. The Mealie error traceback identified an id-less parsed food at recipe update. A separate
-**non-mutating** OpenAI parser check produced 12 parsed lines; four distinct food records and two
-unit records had no matching catalogue identity. No new catalogue entries or recipe updates were
-made during that check. No parser-driven recipe update was retried, nor were the AI/OpenAI
-combination or automatic duplicate imports attempted. Production image publication, Telegram
+SQLite tool audits, and persisted sessions. The live native catalogue exposed eight recipe/organizer tools and no deletion, upload,
+shopping-list, meal-planning, or generic HTTP tool.
+
+A second staged run (2026-09-29 UTC) imported one disposable recipe through the scraper path
+with 12 usable ingredients and six instructions. OpenAI reparsing initially returned a partial
+outcome (Mealie HTTP 500); a read-back confirmed the recipe remained intact. One separate
+AI/imported attempt on the other operator-approved recipe succeeded with 11 usable ingredients
+and two instructions. Both public recipe pages returned HTTP 200.
+
+The Mealie traceback identified an id-less parsed food at recipe update. A non-mutating parser
+check produced 12 parsed lines; four distinct food records and two unit records lacked catalogue
+IDs. After explicit operator approval, updated code was staged in the running pod's ephemeral
+memory filesystem for **one** audited, opt-in existing-recipe reparse, without changing the running
+image or bot process. It succeeded: a fresh API read returned 12 usable ingredients, 12 structured
+food IDs, five unit IDs, and six instructions. Audit-result comparisons confirmed that ingredient
+count, reference-ID order, section titles, and instruction count were preserved; the public page
+returned HTTP 200. The staged code was removed afterward. The running image **does not yet
+contain this fix**; no new image was published. The AI/OpenAI import combination, Telegram
 delivery, ambiguous-filter checks, organizer mutations, and outage recovery remain outstanding.
 
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
@@ -114,7 +121,8 @@ full tool results.
       health output, SQLite audits, session entries, and public configuration.
 - [ ] Scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI disposable imports complete or
       report the documented partial/indeterminate outcome.
-- [ ] Existing-recipe OpenAI reparsing preserves ordering, section references, and verification.
+- [x] Existing-recipe OpenAI reparsing preserves ordering, section references, and verification
+      (one opt-in, audited live run with the updated code staged outside the running image).
 - [ ] Text, category, tag, and ingredient searches resolve exact filters and reject ambiguity.
 - [ ] Category/tag list, create, rename, assignment, replacement, and explicit clear succeed;
       deletion and out-of-scope tools are absent.
