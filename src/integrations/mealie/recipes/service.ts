@@ -197,14 +197,23 @@ export class RecipeService {
     if (values.length !== detail.ingredients.length) {
       throw new Error("Mealie ingredient parser returned an unexpected number of ingredients");
     }
-    const ingredients = values.map((value, index) => {
-      const wrapper = asRecord(value);
-      const ingredient = asRecord(wrapper.ingredient);
+    const ingredients: Record<string, unknown>[] = [];
+    const resolved = new Map<string, { id: string; name: string }>();
+    for (const [index, value] of values.entries()) {
+      const ingredient = asRecord(asRecord(value).ingredient);
       if (Object.keys(ingredient).length === 0) {
         throw new Error(`Mealie parser returned an invalid ingredient at position ${index + 1}`);
       }
-      return preserveIngredient(detail.ingredients[index]!, ingredient);
-    });
+      const food = await this.resolveParsedReference("food", ingredient.food, resolved, signal);
+      const unit = await this.resolveParsedReference("unit", ingredient.unit, resolved, signal);
+      ingredients.push(
+        preserveIngredient(detail.ingredients[index]!, {
+          ...ingredient,
+          food,
+          unit,
+        }),
+      );
+    }
     const rawRecipe = asRecord(await this.client.getRecipe(slug, signal));
     const recipePayload: Record<string, unknown> = {
       ...rawRecipe,
@@ -216,6 +225,57 @@ export class RecipeService {
     if (!verified.ingredients.some(hasIngredientContent)) {
       throw new Error("Recipe ingredient update produced no usable ingredients");
     }
+  }
+
+  private async resolveParsedReference(
+    kind: "food" | "unit",
+    value: unknown,
+    resolved: Map<string, { id: string; name: string }>,
+    signal: AbortSignal,
+  ): Promise<{ id: string; name: string } | null> {
+    if (value === null || value === undefined) return null;
+    const record = asRecord(value);
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (!name) throw new Error(`Mealie parser returned a ${kind} without a name`);
+    if (typeof record.id === "string" && record.id) return { id: record.id, name };
+    const cacheKey = `${kind}:${normalizeName(name)}`;
+    const cached = resolved.get(cacheKey);
+    if (cached) return cached;
+    const matches: Array<{ id: string; name: string }> = [];
+    for (let page = 1; page <= 5; page += 1) {
+      const params = { search: name, page, perPage: MAX_PAGE };
+      const response =
+        kind === "food"
+          ? await this.client.listOrganizers("food", params, signal)
+          : await this.client.listUnits(params, signal);
+      const entries = pageItems(response);
+      for (const entry of entries) {
+        const candidate = organizer(entry);
+        if (!candidate) continue;
+        const raw = asRecord(entry);
+        const aliases = [
+          candidate.name,
+          ...(candidate.aliases ?? []),
+          ...(kind === "unit" && typeof raw.abbreviation === "string" ? [raw.abbreviation] : []),
+        ];
+        if (aliases.some((alias) => normalizeName(alias) === normalizeName(name))) {
+          matches.push({ id: candidate.id, name: candidate.name });
+        }
+      }
+      const totalPages = Number(asRecord(response).total_pages ?? 1);
+      if (!Number.isFinite(totalPages) || totalPages <= page) break;
+      if (page === 5) throw new Error(`Mealie ${kind} lookup exceeded its page bound`);
+    }
+    if (matches.length !== 1) {
+      throw new Error(
+        matches.length === 0
+          ? `Mealie ${kind} is not registered: ${name}; no recipe update was made`
+          : `Mealie ${kind} is ambiguous: ${name}; no recipe update was made`,
+      );
+    }
+    const match = matches[0]!;
+    resolved.set(cacheKey, match);
+    return match;
   }
 
   private async resolveMany(

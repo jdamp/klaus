@@ -131,7 +131,15 @@ describe("native Mealie capability", () => {
       if (url.endsWith("/api/recipes/tomato-pasta") && method === "GET")
         return jsonResponse(updated ?? detail);
       if (url.endsWith("/api/parser/ingredients"))
-        return jsonResponse([{ ingredient: { quantity: 2, food: { name: "tomato" } } }]);
+        return jsonResponse([
+          {
+            ingredient: { quantity: 2, food: { name: "tomato" }, unit: { name: "pieces" } },
+          },
+        ]);
+      if (url.includes("/api/foods?"))
+        return jsonResponse({ items: [{ id: "food-id", name: "tomato" }], total_pages: 1 });
+      if (url.includes("/api/units?"))
+        return jsonResponse({ items: [{ id: "unit-id", name: "pieces" }], total_pages: 1 });
       if (url.endsWith("/api/recipes/tomato-pasta") && method === "PUT") {
         updated = JSON.parse(body ?? "{}") as Record<string, unknown>;
         return jsonResponse(updated);
@@ -174,7 +182,8 @@ describe("native Mealie capability", () => {
     expect(JSON.stringify(result)).toContain("tomato-pasta");
     const put = updated?.recipeIngredient as Array<Record<string, unknown>> | undefined;
     expect(put?.[0]?.referenceId).toBe("ingredient-1");
-    expect(put?.[0]?.food).toEqual({ name: "tomato" });
+    expect(put?.[0]?.food).toEqual({ id: "food-id", name: "tomato" });
+    expect(put?.[0]?.unit).toEqual({ id: "unit-id", name: "pieces" });
     expect(JSON.stringify(result)).toContain("https://recipes.test/g/home/r/tomato-pasta");
     expect(calls.some((call) => call.url.endsWith("/api/recipes/create/ai/stream"))).toBe(true);
     expect(calls.some((call) => call.url.endsWith("/api/parser/ingredients"))).toBe(true);

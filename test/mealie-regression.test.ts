@@ -118,6 +118,34 @@ describe("Mealie 3.28 recipe regression", () => {
     await expect(client.listOrganizers("food", { search: "lentils" })).rejects.toThrow("non-JSON");
   });
 
+  it("never sends an id-less parser food to recipe update", async () => {
+    const paths: string[] = [];
+    const fetcher: MealieFetch = async (input, init) => {
+      const url = new URL(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
+      paths.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname === "/api/recipes/lentils" && init?.method !== "PUT") {
+        return new Response(JSON.stringify(detail));
+      }
+      if (url.pathname === "/api/parser/ingredients") {
+        return new Response(
+          JSON.stringify([{ ingredient: { food: { name: "unregistered-food" } } }]),
+        );
+      }
+      if (url.pathname === "/api/foods") {
+        return new Response(JSON.stringify({ items: [], total_pages: 1 }));
+      }
+      throw new Error("Recipe must not be updated with an unknown food");
+    };
+    const service = new RecipeService(new MealieClient(config, "fixture-key", fetcher));
+    await expect(service.reparse("lentils", new AbortController().signal)).rejects.toMatchObject({
+      outcome: "partial",
+      result: { slug: "lentils", stage: "ingredient_normalization" },
+    } satisfies Partial<NativeToolError>);
+    expect(paths).not.toContain("PUT /api/recipes/lentils");
+  });
+
   it("rejects a public URL with a path, credentials, query, or fragment", () => {
     const yaml = (url: string) =>
       `telegram:\n  tokenFile: /tmp/telegram\n  allowedUsers: ["1"]\n  allowedChats: ["1"]\nmodel:\n  provider: openai-codex\n  id: gpt-5.4\n  authPath: /tmp/auth.json\ndata:\n  directory: /tmp/data\nmcp: []\nskills:\n  paths: []\nhealth: {}\nmealie:\n  baseUrl: https://mealie.test\n  publicUrl: ${url}\n  apiKeyFile: /tmp/mealie-key\n`;

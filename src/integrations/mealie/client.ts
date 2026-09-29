@@ -70,6 +70,13 @@ export class MealieClient {
     return this.json("GET", `${path}?${query(params)}`, undefined, signal);
   }
 
+  async listUnits(
+    params: Record<string, string | number | boolean | undefined>,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.json("GET", `/api/units?${query(params)}`, undefined, signal);
+  }
+
   async getOrganizer(kind: "category" | "tag", id: string, signal?: AbortSignal): Promise<unknown> {
     const path = kind === "category" ? "categories" : "tags";
     return this.json("GET", `/api/organizers/${path}/${encodeURIComponent(id)}`, undefined, signal);

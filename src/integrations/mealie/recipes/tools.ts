@@ -87,6 +87,7 @@ export function recipeTools(
         return { slug: stringValue(object.slug, "slug") };
       },
       execute: ({ slug }, signal) => service.reparse(slug, signal),
+      timeoutMs: importTimeoutMs,
     }),
   ];
 }
