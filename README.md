@@ -236,13 +236,16 @@ Mealie is optional and is enabled only when both `baseUrl` and a mounted `apiKey
 
 ```yaml
 mealie:
-  baseUrl: https://mealie.example.invalid
+  baseUrl: http://mealie-service.mealie.svc.cluster.local
+  publicUrl: https://mealie.example.invalid # browser-accessible origin, not the internal API URL
   apiKeyFile: /run/secrets/mealie/api-key
   requestTimeoutMs: 30000
   importTimeoutMs: 180000
 ```
 
-The native surface includes bounded recipe search/retrieval, URL import with explicit `sourceStrategy: scraper|ai` and `ingredientStrategy: imported|openai`, existing-recipe ingredient reparsing, and non-destructive category/tag list/create/rename/assignment operations. It does not expose arbitrary HTTP, shopping lists, meal planning, uploads, or deletion. Scraper and AI imports use Mealie's streaming endpoints; if a stream ends after the server may have committed, Klaus reports an indeterminate result and never retries automatically. If ingredient processing fails after creation, the result includes the created slug and partial stage.
+When `publicUrl` is set and Mealie reports a default group slug, recipe search, retrieval, and import results include a direct browser link (`/g/<group>/r/<slug>`). Configure the actual user-accessible origin; do not use the in-cluster `baseUrl` as the link. The model should share that link when referring the user to a recipe.
+
+The native surface includes bounded recipe search/retrieval, URL import with explicit `sourceStrategy: scraper|ai` and `ingredientStrategy: imported|openai`, existing-recipe ingredient reparsing, and non-destructive category/tag list/create/rename/assignment operations. It does not expose arbitrary HTTP, shopping lists, meal planning, uploads, or deletion. Scraper and AI imports use Mealie's streaming endpoints; if a stream ends after the server may have committed, Klaus reports an indeterminate result and never retries automatically. If ingredient processing fails after creation, the result includes the created slug and partial stage. If Mealie returns only blank ingredient placeholders, Klaus reports a partial import instead of claiming success. Do not automatically retry a failed or partial creation; inspect the existing recipe first.
 
 Create a dedicated Mealie automation key outside the repository and mount it read-only. Klaus sends it only as a bearer header, rejects redirects, redacts it from audits and diagnostics, and bounds remote responses and model-visible results. Mealie's own HTTP allow/disallow policy remains authoritative for URLs that Mealie fetches. Validate both import paths and both ingredient modes against disposable recipes before household rollout; remove the configuration and secret mount to roll back.
 

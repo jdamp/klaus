@@ -34,11 +34,27 @@ export type RecipeImportInput = {
   ingredientStrategy: "imported" | "openai";
   includeTags?: boolean;
   includeCategories?: boolean;
-  translate?: boolean;
+  translateLanguage?: string;
 };
 
 export class RecipeService {
-  constructor(private readonly client: MealieClient) {}
+  constructor(
+    private readonly client: MealieClient,
+    private readonly publicUrl?: string,
+    private readonly groupSlug?: () => string | undefined,
+  ) {}
+
+  private urlFor(slug: string): string | undefined {
+    const group = this.groupSlug?.();
+    return this.publicUrl && group
+      ? `${this.publicUrl}/g/${encodeURIComponent(group)}/r/${encodeURIComponent(slug)}`
+      : undefined;
+  }
+
+  private link<T extends RecipeSummary>(recipe: T): T {
+    const recipeUrl = this.urlFor(recipe.slug);
+    return recipeUrl ? { ...recipe, recipeUrl } : recipe;
+  }
 
   async search(input: RecipeSearchInput, signal: AbortSignal): Promise<BoundedPage<RecipeSummary>> {
     const page = positiveInt(input.page, 1);
@@ -60,13 +76,15 @@ export class RecipeService {
       },
       signal,
     );
-    const items = pageItems(raw).slice(0, perPage).map(recipeSummary);
+    const items = pageItems(raw)
+      .slice(0, perPage)
+      .map((item) => this.link(recipeSummary(item)));
     return pageOf(raw, items, page, perPage);
   }
 
   async get(slug: string, signal: AbortSignal): Promise<RecipeDetail> {
     try {
-      return recipeDetail(await this.client.getRecipe(slug, signal));
+      return this.link(recipeDetail(await this.client.getRecipe(slug, signal)));
     } catch (error) {
       if (error instanceof MealieHttpError && error.status === 404) {
         throw new Error(`Mealie recipe not found: ${slug}`, { cause: error });
@@ -78,10 +96,9 @@ export class RecipeService {
   async import(input: RecipeImportInput, signal: AbortSignal): Promise<RecipeDetail> {
     const options: Record<string, string | boolean | undefined> = {
       url: input.url,
-      include_tags: input.includeTags,
-      include_categories: input.includeCategories,
-      createNewOrganizers: false,
-      ...(input.sourceStrategy === "ai" ? { translate: input.translate } : {}),
+      ...(input.sourceStrategy === "scraper"
+        ? { includeTags: input.includeTags, includeCategories: input.includeCategories }
+        : { createNewOrganizers: false, translateLanguage: input.translateLanguage }),
     };
     let events;
     try {
@@ -113,8 +130,19 @@ export class RecipeService {
       throw new NativeToolError("Recipe was created but could not be retrieved", "partial", {
         status: "partial",
         slug,
+        ...(this.urlFor(slug) ? { recipeUrl: this.urlFor(slug) } : {}),
         stage: "recipe_verification",
         error: safeError(error),
+      });
+    }
+    if (!detail.ingredients.some(hasIngredientContent)) {
+      throw new NativeToolError("Recipe created without usable ingredients", "partial", {
+        status: "partial",
+        slug,
+        ...(detail.recipeUrl ? { recipeUrl: detail.recipeUrl } : {}),
+        stage: "ingredient_verification",
+        error:
+          "Mealie returned no usable ingredient text or food; review the created recipe before attempting another import",
       });
     }
     if (input.ingredientStrategy === "openai") {
@@ -129,6 +157,7 @@ export class RecipeService {
           {
             status: "partial",
             slug,
+            ...(detail.recipeUrl ? { recipeUrl: detail.recipeUrl } : {}),
             stage: "ingredient_normalization",
             error: safeError(error),
           },
@@ -148,6 +177,7 @@ export class RecipeService {
       throw new NativeToolError("Recipe ingredient normalization failed", "partial", {
         status: "partial",
         slug,
+        ...(detail.recipeUrl ? { recipeUrl: detail.recipeUrl } : {}),
         stage: "ingredient_normalization",
         error: safeError(error),
       });
@@ -160,22 +190,32 @@ export class RecipeService {
         ingredient.originalText?.trim() || ingredient.display?.trim() || ingredient.note?.trim(),
     );
     if (source.some((value) => !value)) throw new Error("Every ingredient must have source text");
+    if (source.length === 0) throw new Error("Recipe has no ingredients to normalize");
     const parsed = await this.client.parseIngredients(source as string[], signal);
     const parsedValues: unknown = Array.isArray(parsed) ? parsed : asRecord(parsed).ingredients;
     const values: unknown[] = Array.isArray(parsedValues) ? parsedValues : [];
     if (values.length !== detail.ingredients.length) {
       throw new Error("Mealie ingredient parser returned an unexpected number of ingredients");
     }
+    const ingredients = values.map((value, index) => {
+      const wrapper = asRecord(value);
+      const ingredient = asRecord(wrapper.ingredient);
+      if (Object.keys(ingredient).length === 0) {
+        throw new Error(`Mealie parser returned an invalid ingredient at position ${index + 1}`);
+      }
+      return preserveIngredient(detail.ingredients[index]!, ingredient);
+    });
     const rawRecipe = asRecord(await this.client.getRecipe(slug, signal));
     const recipePayload: Record<string, unknown> = {
       ...rawRecipe,
-      recipeIngredient: values.map((value, index) =>
-        preserveIngredient(detail.ingredients[index]!, asRecord(value)),
-      ),
+      recipeIngredient: ingredients,
     };
     await this.client.updateRecipe(slug, recipePayload, signal);
     const verified = recipeDetail(await this.client.getRecipe(slug, signal));
     verifyIngredients(detail.ingredients, verified.ingredients);
+    if (!verified.ingredients.some(hasIngredientContent)) {
+      throw new Error("Recipe ingredient update produced no usable ingredients");
+    }
   }
 
   private async resolveMany(
@@ -254,6 +294,15 @@ export class RecipeService {
   }
 }
 
+function hasIngredientContent(ingredient: MealieIngredient): boolean {
+  return Boolean(
+    ingredient.originalText?.trim() ||
+    ingredient.display?.trim() ||
+    ingredient.note?.trim() ||
+    (asRecord(ingredient.food).name && typeof asRecord(ingredient.food).name === "string"),
+  );
+}
+
 function preserveIngredient(
   original: MealieIngredient,
   parsed: Record<string, unknown>,
@@ -281,9 +330,14 @@ function verifyIngredients(
   }
 }
 
-function streamSlug(events: readonly { data: unknown }[]): string | undefined {
+function streamSlug(events: readonly { data: unknown; event?: string }[]): string | undefined {
   for (const event of events) {
-    if (typeof event.data === "string" && event.data.trim() && !event.data.includes(" "))
+    if (
+      event.event === "done" &&
+      typeof event.data === "string" &&
+      event.data.trim() &&
+      !event.data.includes(" ")
+    )
       return event.data.trim();
     const record = asRecord(event.data);
     const recipe = asRecord(record.recipe);

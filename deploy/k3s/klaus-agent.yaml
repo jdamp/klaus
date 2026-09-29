@@ -46,7 +46,8 @@ data:
       retryLimit: 2
     # Optional native Mealie integration. Uncomment only after upgrading Mealie to 3.23+.
     # mealie:
-    #   baseUrl: https://mealie.example.invalid
+    #   baseUrl: http://mealie-service.mealie.svc.cluster.local
+    #   publicUrl: https://mealie.example.invalid # browser-accessible origin
     #   apiKeyFile: /run/secrets/mealie/api-key
     #   requestTimeoutMs: 30000
     #   importTimeoutMs: 180000

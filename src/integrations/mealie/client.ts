@@ -106,6 +106,17 @@ export class MealieClient {
   ): Promise<MealieStreamEvent[]> {
     const path =
       strategy === "scraper" ? "/api/recipes/create/url/stream" : "/api/recipes/create/ai/stream";
+    if (strategy === "scraper") {
+      return this.stream(
+        path,
+        JSON.stringify({
+          url: options.url,
+          includeTags: options.includeTags ?? false,
+          includeCategories: options.includeCategories ?? false,
+        }),
+        signal,
+      );
+    }
     const form = new FormData();
     for (const [key, value] of Object.entries(options)) {
       if (value !== undefined) form.append(key, String(value));
@@ -145,12 +156,15 @@ export class MealieClient {
 
   private async stream(
     path: string,
-    body: FormData,
+    body: FormData | string,
     signal?: AbortSignal,
   ): Promise<MealieStreamEvent[]> {
     const response = await this.#fetch(this.url(path), {
       method: "POST",
-      headers: { Authorization: `Bearer ${this.#apiKey}` },
+      headers: {
+        Authorization: `Bearer ${this.#apiKey}`,
+        ...(typeof body === "string" ? { "content-type": "application/json" } : {}),
+      },
       body,
       redirect: "error",
       ...(signal ? { signal } : {}),

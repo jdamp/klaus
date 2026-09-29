@@ -19,6 +19,7 @@ export class MealieProvider implements CapabilityProvider {
   readonly #tools: readonly ToolDefinition[];
   #state: ComponentHealth = { status: "degraded", detail: "Mealie has not been checked" };
   #incompatible = false;
+  #groupSlug: string | undefined;
 
   constructor(
     config: MealieConfig,
@@ -41,7 +42,11 @@ export class MealieProvider implements CapabilityProvider {
     );
     this.#importTimeoutMs = config.importTimeoutMs;
     this.#tools = [
-      ...recipeTools(new RecipeService(this.#client), this.#executor, this.#importTimeoutMs),
+      ...recipeTools(
+        new RecipeService(this.#client, config.publicUrl, () => this.#groupSlug),
+        this.#executor,
+        this.#importTimeoutMs,
+      ),
       ...organizerTools(new OrganizerService(this.#client), this.#executor),
     ];
   }
@@ -74,6 +79,10 @@ export class MealieProvider implements CapabilityProvider {
         };
       } else {
         this.#incompatible = false;
+        this.#groupSlug =
+          typeof asRecord(about).defaultGroupSlug === "string"
+            ? String(asRecord(about).defaultGroupSlug)
+            : undefined;
         this.#state = { status: "healthy" };
       }
     } catch (error) {

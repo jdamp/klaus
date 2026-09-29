@@ -29,7 +29,7 @@ const importParameters = {
     ingredientStrategy: { type: "string", enum: ["imported", "openai"] },
     includeTags: { type: "boolean" },
     includeCategories: { type: "boolean" },
-    translate: { type: "boolean" },
+    translateLanguage: { type: "string", minLength: 2, maxLength: 40 },
   },
 };
 
@@ -143,8 +143,13 @@ function parseImport(value: unknown): RecipeImportInput {
     throw new Error("Invalid sourceStrategy");
   if (object.ingredientStrategy !== "imported" && object.ingredientStrategy !== "openai")
     throw new Error("Invalid ingredientStrategy");
-  if (object.sourceStrategy === "scraper" && object.translate !== undefined)
-    throw new Error("translate is only valid for the AI source strategy");
+  if (object.sourceStrategy === "scraper" && object.translateLanguage !== undefined)
+    throw new Error("translateLanguage is only valid for the AI source strategy");
+  if (
+    object.sourceStrategy === "ai" &&
+    (object.includeTags !== undefined || object.includeCategories !== undefined)
+  )
+    throw new Error("includeTags and includeCategories are only valid for the scraper strategy");
   return {
     url,
     sourceStrategy: object.sourceStrategy,
@@ -153,6 +158,8 @@ function parseImport(value: unknown): RecipeImportInput {
     ...(typeof object.includeCategories === "boolean"
       ? { includeCategories: object.includeCategories }
       : {}),
-    ...(typeof object.translate === "boolean" ? { translate: object.translate } : {}),
+    ...(object.translateLanguage === undefined
+      ? {}
+      : { translateLanguage: stringValue(object.translateLanguage, "translateLanguage") }),
   };
 }

@@ -102,6 +102,15 @@ const mealieSchema = z
         return !url.username && !url.password && !url.search && !url.hash;
       }, "must not contain credentials, a query, or a fragment")
       .transform((value) => value.replace(/\/$/, "")),
+    publicUrl: z
+      .url()
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "must use HTTP(S)")
+      .refine((value) => {
+        const url = new URL(value);
+        return !url.username && !url.password && !url.search && !url.hash && url.pathname === "/";
+      }, "must be an origin without credentials, path, query, or fragment")
+      .transform((value) => value.replace(/\/$/, ""))
+      .optional(),
     apiKeyFile: pathValue,
     requestTimeoutMs: z.number().int().positive().default(30_000),
     importTimeoutMs: z.number().int().positive().default(180_000),

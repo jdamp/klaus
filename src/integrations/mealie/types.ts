@@ -28,6 +28,7 @@ export type RecipeSummary = {
   description?: string;
   image?: string;
   sourceUrl?: string;
+  recipeUrl?: string;
   categories: MealieOrganizer[];
   tags: MealieOrganizer[];
 };
@@ -119,7 +120,7 @@ export function recipeSummary(value: unknown): RecipeSummary {
     ...(description ? { description } : {}),
     ...(image ? { image } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
-    categories: organizerList(record.categories),
+    categories: organizerList(record.recipeCategory ?? record.categories),
     tags: organizerList(record.tags),
   };
 }
@@ -143,7 +144,9 @@ export function recipeDetail(value: unknown): RecipeDetail {
   const recipeYield =
     typeof record.recipeYield === "number" || typeof record.recipeYield === "string"
       ? record.recipeYield
-      : undefined;
+      : typeof record.recipeServings === "number"
+        ? record.recipeServings
+        : undefined;
   return {
     ...summary,
     ...(recipeYield === undefined ? {} : { yield: recipeYield }),
