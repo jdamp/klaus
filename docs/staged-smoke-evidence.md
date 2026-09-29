@@ -99,9 +99,12 @@ with 12 usable ingredients and six instructions. OpenAI reparsing of that recipe
 partial outcome (Mealie HTTP 500); a read-back confirmed its 12 ingredients and instructions
 remained intact, but no structured foods appeared. One separate AI/imported attempt on the other
 operator-approved recipe succeeded with 11 usable ingredients and two instructions. Both public
-recipe pages returned HTTP 200. No parser retry, AI/OpenAI combination, or automatic duplicate
-import was attempted. Production image publication, Telegram delivery, ambiguous-filter checks,
-organizer mutations, and outage recovery remain outstanding.
+recipe pages returned HTTP 200. The Mealie error traceback identified an id-less parsed food at recipe update. A separate
+**non-mutating** OpenAI parser check produced 12 parsed lines; four distinct food records and two
+unit records had no matching catalogue identity. No new catalogue entries or recipe updates were
+made during that check. No parser-driven recipe update was retried, nor were the AI/OpenAI
+combination or automatic duplicate imports attempted. Production image publication, Telegram
+delivery, ambiguous-filter checks, organizer mutations, and outage recovery remain outstanding.
 
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
