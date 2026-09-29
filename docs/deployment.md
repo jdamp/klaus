@@ -21,12 +21,17 @@ are mounted read-only.
 2. Copy `deploy/k3s/secret.example.yaml` outside the repository, replace the placeholders, apply
    it, and do not commit the resulting file. Create a dedicated Kaneo API key under the automation
    account and set `kaneo-api-key`; do not reuse a personal key. If enabling Mealie, first upgrade it
-   to 3.23.0 or newer, configure its AI provider, and set `mealie-api-key` from a dedicated key.
+   to 3.23.0 or newer and configure its AI provider. The Mealie key lives in a **separate** Secret
+   named `mealie-api-key`, under data key `MEALIE_API_KEY`; mount it as `/run/secrets/mealie/api-key`.
+   Never commit the key.
 3. Replace the example Telegram IDs, provider/model selection, and Home Assistant MCP URL in the
    ConfigMap. The Kaneo entry uses the pinned package over stdio and an explicit non-destructive
    project/task allowlist. The optional Mealie section is commented out until its endpoint and key
-   have been reviewed; when enabled it exposes only recipe and non-destructive organizer tools. An
-   MCP server with no `tools` field exposes its discovered catalogue;
+   have been reviewed; when enabled it exposes only recipe and non-destructive organizer tools.
+   Set `mealie.baseUrl` to the internal API service and `mealie.publicUrl` to the browser-accessible
+   origin (currently recorded in the separate `mealie-config` ConfigMap as `MEALIE_BASE_URL`); the
+   application reads these values from `klaus-agent-config`, not environment variables. An MCP
+   server with no `tools` field exposes its discovered catalogue;
    add a list only when you want to restrict that server, or `tools: []` to expose none.
 4. If using a custom household prompt, add `agent.systemPromptFile` to the ConfigMap and include the
    UTF-8 prompt as a read-only ConfigMap or mounted file at that path. The file completely replaces
