@@ -89,15 +89,21 @@ browser-facing link using the configured public origin and group slug. The earli
 blank ingredient slots. After the operator deleted that recipe, a **single** scraper/imported call
 created a replacement; a separate authenticated read confirmed 17 usable ingredients and seven
 instructions, and its public recipe page returned HTTP 200. No AI parsing was requested.
-Production image publication, credential scan, Telegram delivery, and the other import and mutation
-smoke tests remain outstanding.
+Read-only follow-up: text, exact category, and exact tag searches returned bounded pages with
+public links. A food-name filter initially failed because the integration used an obsolete URL;
+the `/api/foods` fix was deployed and the same read-only filter returned the reference recipe.
+The current pod's Mealie key was absent from its logs, public configuration, health response,
+SQLite tool audits, and persisted sessions. The live native catalogue exposed eight recipe/organizer
+tools and no deletion, upload, shopping-list, meal-planning, or generic HTTP tool. Production image
+publication, Telegram delivery, AI-import modes, ambiguous-filter checks, organizer mutations, and
+outage recovery remain outstanding.
 
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
 full tool results.
 
-- [ ] Mealie reports a supported 3.23+ version and the API key is absent from logs, health output,
-      SQLite audits, session entries, and public configuration.
+- [x] Mealie reports a supported 3.23+ version and the API key is absent from current-pod logs,
+      health output, SQLite audits, session entries, and public configuration.
 - [ ] Scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI disposable imports complete or
       report the documented partial/indeterminate outcome.
 - [ ] Existing-recipe OpenAI reparsing preserves ordering, section references, and verification.
