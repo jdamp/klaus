@@ -27,6 +27,11 @@ const importParameters = {
     url: { type: "string", format: "uri" },
     sourceStrategy: { type: "string", enum: ["scraper", "ai"] },
     ingredientStrategy: { type: "string", enum: ["imported", "openai"] },
+    createMissingCatalogEntries: {
+      type: "boolean",
+      description:
+        "Only with OpenAI normalization: create missing foods and units in Mealie's shared catalogue (max 20). Defaults to false.",
+    },
     includeTags: { type: "boolean" },
     includeCategories: { type: "boolean" },
     translateLanguage: { type: "string", minLength: 2, maxLength: 40 },
@@ -75,18 +80,33 @@ export function recipeTools(
     nativeTool({
       executor,
       name: "mealie_reparse_recipe_ingredients",
-      description: "Normalize an existing Mealie recipe's ingredients with the OpenAI parser.",
+      description:
+        "Normalize an existing Mealie recipe's ingredients with the OpenAI parser. Shared food/unit creation requires explicit opt-in.",
       parameters: {
         type: "object",
         additionalProperties: false,
         required: ["slug"],
-        properties: { slug: { type: "string", minLength: 1, maxLength: 200 } },
+        properties: {
+          slug: { type: "string", minLength: 1, maxLength: 200 },
+          createMissingCatalogEntries: {
+            type: "boolean",
+            description:
+              "Create missing foods and units in Mealie's shared catalogue (max 20). Defaults to false.",
+          },
+        },
       },
       parse: (value) => {
         const object = objectValue(value);
-        return { slug: stringValue(object.slug, "slug") };
+        return {
+          slug: stringValue(object.slug, "slug"),
+          createMissingCatalogEntries: optionalBoolean(
+            object.createMissingCatalogEntries,
+            "createMissingCatalogEntries",
+          ),
+        };
       },
-      execute: ({ slug }, signal) => service.reparse(slug, signal),
+      execute: ({ slug, createMissingCatalogEntries }, signal) =>
+        service.reparse(slug, signal, createMissingCatalogEntries),
       timeoutMs: importTimeoutMs,
     }),
   ];
@@ -134,6 +154,12 @@ function parseSearch(value: unknown): RecipeSearchInput {
   };
 }
 
+function optionalBoolean(value: unknown, name: string): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") throw new Error(`Invalid ${name}`);
+  return value;
+}
+
 function parseImport(value: unknown): RecipeImportInput {
   const object = objectValue(value);
   const url = stringValue(object.url, "url");
@@ -144,6 +170,12 @@ function parseImport(value: unknown): RecipeImportInput {
     throw new Error("Invalid sourceStrategy");
   if (object.ingredientStrategy !== "imported" && object.ingredientStrategy !== "openai")
     throw new Error("Invalid ingredientStrategy");
+  const createMissingCatalogEntries = optionalBoolean(
+    object.createMissingCatalogEntries,
+    "createMissingCatalogEntries",
+  );
+  if (createMissingCatalogEntries && object.ingredientStrategy !== "openai")
+    throw new Error("createMissingCatalogEntries requires OpenAI ingredient normalization");
   if (object.sourceStrategy === "scraper" && object.translateLanguage !== undefined)
     throw new Error("translateLanguage is only valid for the AI source strategy");
   if (
@@ -155,6 +187,7 @@ function parseImport(value: unknown): RecipeImportInput {
     url,
     sourceStrategy: object.sourceStrategy,
     ingredientStrategy: object.ingredientStrategy,
+    createMissingCatalogEntries,
     ...(typeof object.includeTags === "boolean" ? { includeTags: object.includeTags } : {}),
     ...(typeof object.includeCategories === "boolean"
       ? { includeCategories: object.includeCategories }

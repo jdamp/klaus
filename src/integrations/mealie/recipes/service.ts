@@ -35,6 +35,7 @@ export type RecipeImportInput = {
   includeTags?: boolean;
   includeCategories?: boolean;
   translateLanguage?: string;
+  createMissingCatalogEntries?: boolean;
 };
 
 export class RecipeService {
@@ -147,7 +148,7 @@ export class RecipeService {
     }
     if (input.ingredientStrategy === "openai") {
       try {
-        await this.normalize(slug, detail, signal);
+        await this.normalize(slug, detail, signal, input.createMissingCatalogEntries ?? false);
         detail = await this.get(slug, signal);
       } catch (error) {
         if (signal.aborted || error instanceof NativeToolError) throw error;
@@ -167,10 +168,14 @@ export class RecipeService {
     return detail;
   }
 
-  async reparse(slug: string, signal: AbortSignal): Promise<RecipeDetail> {
+  async reparse(
+    slug: string,
+    signal: AbortSignal,
+    createMissingCatalogEntries = false,
+  ): Promise<RecipeDetail> {
     const detail = await this.get(slug, signal);
     try {
-      await this.normalize(slug, detail, signal);
+      await this.normalize(slug, detail, signal, createMissingCatalogEntries);
       return await this.get(slug, signal);
     } catch (error) {
       if (signal.aborted || error instanceof NativeToolError) throw error;
@@ -184,7 +189,12 @@ export class RecipeService {
     }
   }
 
-  private async normalize(slug: string, detail: RecipeDetail, signal: AbortSignal): Promise<void> {
+  private async normalize(
+    slug: string,
+    detail: RecipeDetail,
+    signal: AbortSignal,
+    createMissingCatalogEntries: boolean,
+  ): Promise<void> {
     const source = detail.ingredients.map(
       (ingredient) =>
         ingredient.originalText?.trim() || ingredient.display?.trim() || ingredient.note?.trim(),
@@ -197,33 +207,66 @@ export class RecipeService {
     if (values.length !== detail.ingredients.length) {
       throw new Error("Mealie ingredient parser returned an unexpected number of ingredients");
     }
-    const ingredients: Record<string, unknown>[] = [];
-    const resolved = new Map<string, { id: string; name: string }>();
-    for (const [index, value] of values.entries()) {
+    const parsedIngredients = values.map((value, index) => {
       const ingredient = asRecord(asRecord(value).ingredient);
       if (Object.keys(ingredient).length === 0) {
         throw new Error(`Mealie parser returned an invalid ingredient at position ${index + 1}`);
       }
-      const food = await this.resolveParsedReference("food", ingredient.food, resolved, signal);
-      const unit = await this.resolveParsedReference("unit", ingredient.unit, resolved, signal);
-      ingredients.push(
-        preserveIngredient(detail.ingredients[index]!, {
-          ...ingredient,
-          food,
-          unit,
-        }),
+      return ingredient;
+    });
+    const resolved = new Map<string, { id: string; name: string }>();
+    const missing = new Map<string, { kind: "food" | "unit"; value: unknown }>();
+    // Validate every reference before creating any shared catalogue entry.
+    for (const ingredient of parsedIngredients) {
+      for (const kind of ["food", "unit"] as const) {
+        const value = ingredient[kind];
+        const reference = await this.resolveParsedReference(kind, value, resolved, signal, true);
+        if (reference === undefined) {
+          const name = asRecord(value).name as string;
+          missing.set(`${kind}:${normalizeName(name)}`, { kind, value });
+        }
+      }
+    }
+    if (missing.size && !createMissingCatalogEntries) {
+      throw new Error(
+        `Mealie parser references ${missing.size} unregistered foods/units; explicit catalogue creation is required`,
       );
     }
-    const rawRecipe = asRecord(await this.client.getRecipe(slug, signal));
-    const recipePayload: Record<string, unknown> = {
-      ...rawRecipe,
-      recipeIngredient: ingredients,
-    };
-    await this.client.updateRecipe(slug, recipePayload, signal);
-    const verified = recipeDetail(await this.client.getRecipe(slug, signal));
-    verifyIngredients(detail.ingredients, verified.ingredients);
-    if (!verified.ingredients.some(hasIngredientContent)) {
-      throw new Error("Recipe ingredient update produced no usable ingredients");
+    if (missing.size > 20) throw new Error("Too many missing Mealie catalogue entries");
+    const created: Array<{ kind: "food" | "unit"; id: string }> = [];
+    try {
+      for (const { kind, value } of missing.values()) {
+        await this.resolveParsedReference(kind, value, resolved, signal, false, created);
+      }
+      const ingredients: Record<string, unknown>[] = [];
+      for (const [index, ingredient] of parsedIngredients.entries()) {
+        const food = await this.resolveParsedReference("food", ingredient.food, resolved, signal);
+        const unit = await this.resolveParsedReference("unit", ingredient.unit, resolved, signal);
+        ingredients.push(
+          preserveIngredient(detail.ingredients[index]!, {
+            ...ingredient,
+            food,
+            unit,
+          }),
+        );
+      }
+      const rawRecipe = asRecord(await this.client.getRecipe(slug, signal));
+      await this.client.updateRecipe(slug, { ...rawRecipe, recipeIngredient: ingredients }, signal);
+      const verified = recipeDetail(await this.client.getRecipe(slug, signal));
+      verifyIngredients(detail.ingredients, verified.ingredients);
+      if (!verified.ingredients.some(hasIngredientContent)) {
+        throw new Error("Recipe ingredient update produced no usable ingredients");
+      }
+    } catch (error) {
+      if (!created.length || signal.aborted) throw error;
+      throw new NativeToolError("Mealie normalization partially changed the catalogue", "partial", {
+        status: "partial",
+        slug,
+        ...(detail.recipeUrl ? { recipeUrl: detail.recipeUrl } : {}),
+        stage: "ingredient_normalization",
+        createdCatalogEntries: created,
+        error: safeError(error),
+      });
     }
   }
 
@@ -232,7 +275,9 @@ export class RecipeService {
     value: unknown,
     resolved: Map<string, { id: string; name: string }>,
     signal: AbortSignal,
-  ): Promise<{ id: string; name: string } | null> {
+    allowMissing = false,
+    created?: Array<{ kind: "food" | "unit"; id: string }>,
+  ): Promise<{ id: string; name: string } | null | undefined> {
     if (value === null || value === undefined) return null;
     const record = asRecord(value);
     const name = typeof record.name === "string" ? record.name.trim() : "";
@@ -262,18 +307,38 @@ export class RecipeService {
           matches.push({ id: candidate.id, name: candidate.name });
         }
       }
-      const totalPages = Number(asRecord(response).total_pages ?? 1);
+      const totalPages = Number(
+        asRecord(response).totalPages ?? asRecord(response).total_pages ?? 1,
+      );
       if (!Number.isFinite(totalPages) || totalPages <= page) break;
       if (page === 5) throw new Error(`Mealie ${kind} lookup exceeded its page bound`);
     }
-    if (matches.length !== 1) {
-      throw new Error(
-        matches.length === 0
-          ? `Mealie ${kind} is not registered: ${name}; no recipe update was made`
-          : `Mealie ${kind} is ambiguous: ${name}; no recipe update was made`,
-      );
+    if (matches.length > 1) {
+      throw new Error(`Mealie ${kind} is ambiguous: ${name}; no recipe update was made`);
     }
-    const match = matches[0]!;
+    let match = matches[0];
+    if (!match && created) {
+      // Recheck immediately before POST; never retry a creation with an uncertain outcome.
+      match = (await this.resolveParsedReference(kind, value, resolved, signal, true)) ?? undefined;
+      if (!match) {
+        const createdItem = organizer(await this.client.createCatalogItem(kind, name, signal));
+        if (!createdItem || normalizeName(createdItem.name) !== normalizeName(name)) {
+          throw new Error(
+            `Mealie ${kind} creation returned an invalid identity; inspect the catalogue before retrying`,
+          );
+        }
+        created.push({ kind, id: createdItem.id });
+        const verified = organizer(await this.client.getCatalogItem(kind, createdItem.id, signal));
+        if (!verified || verified.id !== createdItem.id) {
+          throw new Error(`Created Mealie ${kind} could not be verified`);
+        }
+        match = { id: verified.id, name: verified.name };
+      }
+    }
+    if (!match) {
+      if (allowMissing) return undefined;
+      throw new Error(`Mealie ${kind} is not registered: ${name}; no recipe update was made`);
+    }
     resolved.set(cacheKey, match);
     return match;
   }

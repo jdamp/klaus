@@ -146,6 +146,100 @@ describe("Mealie 3.28 recipe regression", () => {
     expect(paths).not.toContain("PUT /api/recipes/lentils");
   });
 
+  it("preflights ambiguous references before any opt-in catalogue creation", async () => {
+    const mutations: string[] = [];
+    const fetcher: MealieFetch = async (input, init) => {
+      const url = new URL(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
+      if (init?.method === "POST" && url.pathname !== "/api/parser/ingredients") {
+        mutations.push(url.pathname);
+      }
+      if (url.pathname === "/api/recipes/lentils") return new Response(JSON.stringify(detail));
+      if (url.pathname === "/api/parser/ingredients") {
+        return new Response(
+          JSON.stringify([
+            {
+              ingredient: { food: { name: "new-food" }, unit: { name: "duplicate-unit" } },
+            },
+          ]),
+        );
+      }
+      if (url.pathname === "/api/foods") return new Response(JSON.stringify({ items: [] }));
+      if (url.pathname === "/api/units")
+        return new Response(
+          JSON.stringify({
+            items: [
+              { id: "one", name: "duplicate-unit" },
+              { id: "two", name: "duplicate-unit" },
+            ],
+          }),
+        );
+      throw new Error("Unexpected mutation");
+    };
+    const service = new RecipeService(new MealieClient(config, "fixture-key", fetcher));
+    await expect(
+      service.reparse("lentils", new AbortController().signal, true),
+    ).rejects.toMatchObject({
+      outcome: "partial",
+      result: { stage: "ingredient_normalization" },
+    } satisfies Partial<NativeToolError>);
+    expect(mutations).toEqual([]);
+  });
+
+  it("creates missing foods and units only with explicit opt-in and stable IDs", async () => {
+    const calls: string[] = [];
+    let recipe: { recipeIngredient: Record<string, unknown>[] } = detail;
+    const fetcher: MealieFetch = async (input, init) => {
+      const url = new URL(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
+      const method = init?.method ?? "GET";
+      calls.push(`${method} ${url.pathname}`);
+      const kind = url.pathname.startsWith("/api/foods") ? "food" : "unit";
+      const name = kind === "food" ? "lentils" : "grams";
+      const id = `${kind}-id`;
+      if (url.pathname === "/api/recipes/lentils") {
+        if (method === "PUT") {
+          recipe = JSON.parse(init?.body as string) as typeof recipe;
+          return new Response(JSON.stringify(recipe));
+        }
+        return new Response(JSON.stringify(recipe));
+      }
+      if (url.pathname === "/api/parser/ingredients") {
+        return new Response(
+          JSON.stringify([
+            {
+              ingredient: {
+                note: "100 g lentils",
+                food: { name: "lentils" },
+                unit: { name: "grams" },
+              },
+            },
+          ]),
+        );
+      }
+      if (url.pathname === "/api/foods" || url.pathname === "/api/units") {
+        return method === "POST"
+          ? new Response(JSON.stringify({ id, name }))
+          : new Response(JSON.stringify({ items: [], total_pages: 1 }));
+      }
+      if (url.pathname === `/api/${kind}s/${id}`) return new Response(JSON.stringify({ id, name }));
+      throw new Error("Unexpected endpoint");
+    };
+    const service = new RecipeService(new MealieClient(config, "fixture-key", fetcher));
+    const result = await service.reparse("lentils", new AbortController().signal, true);
+    expect(result.ingredients[0]?.food).toMatchObject({ id: "food-id", name: "lentils" });
+    expect(calls.filter((call) => ["POST /api/foods", "POST /api/units"].includes(call))).toEqual([
+      "POST /api/foods",
+      "POST /api/units",
+    ]);
+    expect(calls).toContain("PUT /api/recipes/lentils");
+    expect(calls.indexOf("POST /api/foods")).toBeGreaterThan(calls.indexOf("GET /api/units"));
+    expect(recipe.recipeIngredient[0]?.referenceId).toBe("ref-1");
+    expect(recipe.recipeIngredient[0]?.unit).toMatchObject({ id: "unit-id", name: "grams" });
+  });
+
   it("rejects a public URL with a path, credentials, query, or fragment", () => {
     const yaml = (url: string) =>
       `telegram:\n  tokenFile: /tmp/telegram\n  allowedUsers: ["1"]\n  allowedChats: ["1"]\nmodel:\n  provider: openai-codex\n  id: gpt-5.4\n  authPath: /tmp/auth.json\ndata:\n  directory: /tmp/data\nmcp: []\nskills:\n  paths: []\nhealth: {}\nmealie:\n  baseUrl: https://mealie.test\n  publicUrl: ${url}\n  apiKeyFile: /tmp/mealie-key\n`;

@@ -77,6 +77,19 @@ export class MealieClient {
     return this.json("GET", `/api/units?${query(params)}`, undefined, signal);
   }
 
+  async createCatalogItem(
+    kind: "food" | "unit",
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.json("POST", kind === "food" ? "/api/foods" : "/api/units", { name }, signal);
+  }
+
+  async getCatalogItem(kind: "food" | "unit", id: string, signal?: AbortSignal): Promise<unknown> {
+    const path = kind === "food" ? "/api/foods" : "/api/units";
+    return this.json("GET", `${path}/${encodeURIComponent(id)}`, undefined, signal);
+  }
+
   async getOrganizer(kind: "category" | "tag", id: string, signal?: AbortSignal): Promise<unknown> {
     const path = kind === "category" ? "categories" : "tags";
     return this.json("GET", `/api/organizers/${path}/${encodeURIComponent(id)}`, undefined, signal);

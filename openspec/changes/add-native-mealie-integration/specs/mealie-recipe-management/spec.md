@@ -37,7 +37,7 @@ The system SHALL provide one URL-import operation with an explicit source strate
 - **THEN** the tool reports an indeterminate outcome and does not automatically submit the creation request again
 
 ### Requirement: Ingredient normalization is independently selectable
-The URL-import operation SHALL allow the caller to retain ingredients produced by the selected source workflow or normalize them with Mealie's OpenAI ingredient parser after creation. OpenAI normalization SHALL preserve ingredient ordering, section titles, and stable recipe references when replacing parsed ingredient data.
+The URL-import operation SHALL allow the caller to retain ingredients produced by the selected source workflow or normalize them with Mealie's OpenAI ingredient parser after creation. OpenAI normalization SHALL preserve ingredient ordering, section titles, and stable recipe references when replacing parsed ingredient data. Parsed food and unit references without IDs SHALL be resolved against the shared Mealie catalogue before recipe update. Creation of missing food and unit records MUST require an explicit per-operation opt-in, use an exact-match recheck, and remain bounded. An ambiguous reference MUST NOT be created.
 
 #### Scenario: Imported ingredients are retained
 - **WHEN** the caller selects imported ingredient handling
@@ -50,6 +50,10 @@ The URL-import operation SHALL allow the caller to retain ingredients produced b
 #### Scenario: Existing recipe ingredients are reparsed
 - **WHEN** the agent requests OpenAI ingredient parsing for an existing recipe slug
 - **THEN** the system normalizes that recipe's ingredients with the same preservation and verification behavior used after URL import
+
+#### Scenario: Parsed food or unit is missing from the catalogue
+- **WHEN** the parser returns a food or unit without an ID and no unambiguous exact catalogue match exists
+- **THEN** the system does not update the recipe or create a shared catalogue record unless the caller opted in to bounded creation; with opt-in, it rechecks and creates only still-missing entries, verifies their IDs, and uses those IDs in the recipe update
 
 ### Requirement: Multi-stage recipe mutations report partial outcomes accurately
 The system SHALL distinguish complete success, failure before recipe creation, partial failure after recipe creation, cancellation, timeout, and indeterminate creation outcomes. If a recipe exists when a later parsing, update, or verification stage fails, the result MUST identify the created recipe slug and failed stage and MUST NOT claim complete success or automatically delete the recipe.
