@@ -7,11 +7,19 @@ Define a controlled extension surface for household skills, application tools, a
 ## Requirements
 
 ### Requirement: Only explicitly enabled tools are model-accessible
-The system SHALL expose only operator-enabled application and MCP tools to the agent. General shell execution, unrestricted filesystem mutation, generic outbound HTTP access, and coding-oriented tools MUST be disabled by default.
+The system SHALL expose only operator-enabled application tools and tools provided by operator-configured MCP servers according to each server's exposure policy. General shell execution, unrestricted filesystem mutation, generic outbound HTTP access, and coding-oriented tools MUST remain disabled by default.
 
 #### Scenario: Agent requests an unavailable coding tool
 - **WHEN** the model attempts to call a shell, write, edit, or other tool that is not explicitly enabled
 - **THEN** the system does not execute that operation
+
+#### Scenario: Configured MCP server uses default exposure
+- **WHEN** an operator configures an MCP server without a per-tool restriction
+- **THEN** every valid tool discovered from that server is available to the agent under the server's namespace
+
+#### Scenario: MCP server is not configured
+- **WHEN** an MCP server has not been configured by the operator
+- **THEN** none of that server's tools are available to the agent
 
 ### Requirement: Operators can install custom skills
 The system SHALL discover valid skills from configured operator-managed locations and make their names and descriptions available to the agent. A skill's instructions MUST NOT grant access to a tool that is otherwise disabled.
@@ -46,12 +54,24 @@ The system SHALL connect to configured MCP servers over Streamable HTTP using cr
 - **WHEN** the application authenticates an MCP request
 - **THEN** the credential is not included in model prompts, tool arguments, SQLite content, or logs
 
-### Requirement: MCP tool discovery is fail-closed
-The system SHALL apply an operator-managed allowlist to discovered MCP tools. A newly discovered or renamed server tool MUST remain unavailable until explicitly enabled.
+### Requirement: Configured MCP servers expose discovered tools by default
+The system SHALL expose every valid tool discovered from an operator-configured MCP server when no per-server `tools` restriction is configured. When `tools` is present, the system SHALL expose only the named tools, and an explicit empty list SHALL expose none.
 
-#### Scenario: MCP server adds a tool
-- **WHEN** tool discovery returns a tool name that is absent from the configured allowlist
-- **THEN** the system does not expose that tool to the agent
+#### Scenario: Initial unrestricted discovery
+- **WHEN** a configured MCP server without a `tools` restriction reports its tool catalogue
+- **THEN** all valid discovered tools are exposed under collision-resistant names associated with that server
+
+#### Scenario: Unrestricted server adds a tool
+- **WHEN** a configured unrestricted MCP server reports a new valid tool during later discovery or reconnection
+- **THEN** the new tool becomes available without an application configuration change
+
+#### Scenario: Operator supplies a restrictive list
+- **WHEN** a configured MCP server has an explicit non-empty `tools` list
+- **THEN** only discovered tools named in that list are exposed
+
+#### Scenario: Operator supplies an empty list
+- **WHEN** a configured MCP server has an explicit empty `tools` list
+- **THEN** no tools from that server are exposed
 
 ### Requirement: MCP calls have operational bounds
 The system SHALL validate tool arguments against discovered schemas, propagate cancellation where supported, enforce configured timeouts and result-size limits, and report failures without claiming that an action succeeded.
