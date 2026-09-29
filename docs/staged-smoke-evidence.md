@@ -85,10 +85,12 @@ image before any continued use.
 Local staged read-only verification (2026-09-29 UTC): Mealie 3.28.0 responded through its in-cluster
 service; Klaus `/ready` returned 200 with healthy capabilities. The corrected image was deployed
 from a **24-hour temporary registry**, not a durable image. A recipe-detail lookup produced a
-browser-facing link using the configured public origin and group slug. The previously imported
-recipe still has blank ingredient slots; no automatic duplicate import or repair was attempted.
-Production image publication, credential scan, Telegram delivery, and mutation smoke tests remain
-outstanding.
+browser-facing link using the configured public origin and group slug. The earlier AI import had
+blank ingredient slots. After the operator deleted that recipe, a **single** scraper/imported call
+created a replacement; a separate authenticated read confirmed 17 usable ingredients and seven
+instructions, and its public recipe page returned HTTP 200. No AI parsing was requested.
+Production image publication, credential scan, Telegram delivery, and the other import and mutation
+smoke tests remain outstanding.
 
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
