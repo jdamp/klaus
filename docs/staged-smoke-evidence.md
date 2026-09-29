@@ -94,9 +94,14 @@ public links. A food-name filter initially failed because the integration used a
 the `/api/foods` fix was deployed and the same read-only filter returned the reference recipe.
 The current pod's Mealie key was absent from its logs, public configuration, health response,
 SQLite tool audits, and persisted sessions. The live native catalogue exposed eight recipe/organizer
-tools and no deletion, upload, shopping-list, meal-planning, or generic HTTP tool. Production image
-publication, Telegram delivery, AI-import modes, ambiguous-filter checks, organizer mutations, and
-outage recovery remain outstanding.
+tools and no deletion, upload, shopping-list, meal-planning, or generic HTTP tool. A second staged run (2026-09-29 UTC) imported one disposable recipe through the scraper path
+with 12 usable ingredients and six instructions. OpenAI reparsing of that recipe returned a
+partial outcome (Mealie HTTP 500); a read-back confirmed its 12 ingredients and instructions
+remained intact, but no structured foods appeared. One separate AI/imported attempt on the other
+operator-approved recipe succeeded with 11 usable ingredients and two instructions. Both public
+recipe pages returned HTTP 200. No parser retry, AI/OpenAI combination, or automatic duplicate
+import was attempted. Production image publication, Telegram delivery, ambiguous-filter checks,
+organizer mutations, and outage recovery remain outstanding.
 
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
