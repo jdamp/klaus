@@ -11,8 +11,8 @@ commit tag, in the k3s manifest.
 
 GHCR creates the package as private on its first publication. In the package's GitHub settings,
 change its visibility to public, then verify a pull of the reported digest from a client that is
-not logged in to `ghcr.io`. Confirm the target k3s node architecture is included in the published
-image and make a fresh pull on that node before replacing the deployment image. A public image
+not logged in to `ghcr.io`. Confirm the target k3s node is `amd64` and make a fresh pull on that
+node before replacing the deployment image. A public image
 needs no Kubernetes registry pull Secret. The workflow uses its repository `GITHUB_TOKEN` to push;
 the cluster and this repository need no GHCR credential.
 
