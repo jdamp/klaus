@@ -47,6 +47,13 @@ Migrations run transactionally and idempotently at startup before Telegram polli
 The initial memory migration creates an empty revision-1 `overview` only when absent; it never
 repopulates an overview that a participant cleared.
 
+For container releases, take the exact `ghcr.io/jdamp/klaus-agent@sha256:...` reference from the
+successful `main` workflow run. Confirm that GHCR serves it publicly and that the target k3s node
+can pull it before changing `deploy/k3s/klaus-agent.yaml`. Record both the new and previous durable
+digests with the matching configuration revision and data and Pi authentication backups. Image
+pulls from this public package do not require a registry Secret. If the previous image is still on
+ttl.sh, its 24-hour expiry means it is not a durable rollback target.
+
 1. Record the current image digest and configuration revision.
 2. Run the quality and migration suites for the target version.
 3. Back up SQLite and Pi authentication state independently, with filesystem permissions
@@ -71,7 +78,9 @@ sqlite3 /var/lib/klaus-agent/klaus.sqlite \
 ## Rollback
 
 If the previous image supports the current schema, stop the new pod and redeploy the previously
-recorded image digest against the same volumes.
+recorded public GHCR digest against the same volumes. Do not use a commit tag for rollback: tags
+can be moved, while the recorded digest selects the exact prior image. Use the same single-replica
+`Recreate` strategy so only one Telegram poller runs.
 
 If a migration is not backward-compatible:
 
