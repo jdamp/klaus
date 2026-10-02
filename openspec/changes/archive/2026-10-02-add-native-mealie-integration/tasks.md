@@ -48,6 +48,8 @@
 
 ## 7. Verification and Rollout
 
+First version accepted for archiving on 2026-10-02. Tasks 7.2–7.4 remain unchecked: AI import was verified only after Klaus was enabled; the digest-pinned deployment used a temporary 24-hour image; and the full strategy, Telegram, organizer, and outage acceptance matrix was not run. These checks are not claimed complete by this archive.
+
 - [x] 7.1 Run formatting, linting, type checking, all unit/integration tests, production build, and strict OpenSpec validation for `add-native-mealie-integration`; verify every command succeeds.
 - [ ] 7.2 Upgrade the self-hosted Mealie deployment from 3.22.0 to a current release, configure its default AI provider, create a dedicated automation API key outside the repository, and verify the unified AI import works in Mealie before enabling Klaus.
 - [ ] 7.3 Build and deploy an immutable Klaus image with the mounted Mealie key, then verify readiness remains true and Mealie health reports healthy without exposing the key or its path.
