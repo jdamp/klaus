@@ -30,9 +30,12 @@ are mounted read-only.
    have been reviewed; when enabled it exposes only recipe and non-destructive organizer tools.
    Set `mealie.baseUrl` to the internal API service and `mealie.publicUrl` to the browser-accessible
    origin (currently recorded in the separate `mealie-config` ConfigMap as `MEALIE_BASE_URL`); the
-   application reads these values from `klaus-agent-config`, not environment variables. An MCP
-   server with no `tools` field exposes its discovered catalogue;
-   add a list only when you want to restrict that server, or `tools: []` to expose none.
+   application reads these values from `klaus-agent-config`, not environment variables. MCP servers
+   use `exposure: deferred` by default: their permitted tools are loaded with `tool_search` when
+   needed. Set `exposure: direct` for a small catalogue that should be declared from the first model
+   call. Omitting `tools` permits the full discovered catalogue, a non-empty list restricts it, and
+   `tools: []` disables all tools from that server. Model-visible names use Pi's
+   `mcp__<server>__<tool>` namespace.
 4. If using a custom household prompt, add `agent.systemPromptFile` to the ConfigMap and include the
    UTF-8 prompt as a read-only ConfigMap or mounted file at that path. The file completely replaces
    the built-in prompt and must be non-empty; restart the pod after changes.
@@ -52,7 +55,8 @@ are mounted read-only.
 
 The pod is non-root, drops Linux capabilities, prevents privilege escalation, uses a read-only root
 filesystem, and writes only to the two persistent volumes. Its 40-second termination grace exceeds
-the application's 30-second shutdown deadline.
+the application's 30-second shutdown deadline. Set `PI_CODING_AGENT_DIR` to a directory on the Pi
+authentication volume so Pi's MCP OAuth store does not try to write under the read-only home directory.
 
 ## Staged smoke-test checklist
 
@@ -75,8 +79,8 @@ rollout. Record the image digest, configuration revision, time, tester, and resu
       both in Telegram and in Kaneo; excluded deletion and workspace-mutation tools are unavailable.
 - [ ] Each enabled non-critical action (for example a test light) is confirmed both in Telegram and
       at the target service.
-- [ ] With `tools` omitted, the configured MCP server catalogue is exposed and a representative
-      formerly unlisted namespaced tool is available.
+- [ ] With `tools` omitted, the configured MCP server catalogue is discoverable through
+      `tool_search`; with `exposure: direct`, permitted tools are declared from the first turn.
 - [ ] With the MCP endpoint stopped, unrelated conversation still works and health reports
       degradation.
 - [ ] If Mealie is enabled, verify scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI

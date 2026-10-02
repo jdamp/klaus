@@ -15,11 +15,15 @@ type KubernetesObject = {
 describe("packaging and deployment examples", () => {
   it("ships a validation-safe local configuration without credentials", async () => {
     const source = await readFile("examples/config.local.yaml", "utf8");
+    const containerSource = await readFile("examples/config.container-smoke.yaml", "utf8");
     const config = parseConfig(source);
+    const containerConfig = parseConfig(containerSource);
     expect(config.telegram.allowedUsers).toHaveLength(2);
     expect(config.telegram.allowedChats).toHaveLength(3);
     expect(config.mcp[0]).toMatchObject({ id: "home" });
     expect(config.mcp[0]?.tools).toBeUndefined();
+    expect(config.mcp[0]?.exposure).toBe("deferred");
+    expect(containerConfig.mcp).toEqual([]);
     expect(source).not.toMatch(/\d{8,}:[A-Za-z0-9_-]{20,}/);
     expect(source).not.toContain("Bearer ");
   });
@@ -30,6 +34,7 @@ describe("packaging and deployment examples", () => {
       "ARG NODE_IMAGE=node:22.23.0-bookworm-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2",
     );
     expect(dockerfile.match(/^FROM /gm)?.length).toBeGreaterThanOrEqual(3);
+    expect(dockerfile).toContain("RUN npm install --global npm@12.2.0 && npm ci");
     expect(dockerfile).toContain("USER node");
     expect(dockerfile).toContain('VOLUME ["/var/lib/klaus-agent", "/var/lib/klaus-agent-auth"]');
     expect(dockerfile).toContain("HEALTHCHECK");
@@ -75,6 +80,7 @@ describe("packaging and deployment examples", () => {
           terminationGracePeriodSeconds: number;
           securityContext: Record<string, unknown>;
           containers: Array<{
+            env: Array<{ name: string; value: string }>;
             securityContext: {
               allowPrivilegeEscalation: boolean;
               readOnlyRootFilesystem: boolean;
@@ -104,6 +110,10 @@ describe("packaging and deployment examples", () => {
     });
     expect(container.livenessProbe.httpGet.path).toBe("/live");
     expect(container.readinessProbe.httpGet.path).toBe("/ready");
+    expect(container.env).toContainEqual({
+      name: "PI_CODING_AGENT_DIR",
+      value: "/var/lib/klaus-agent-auth/pi-agent",
+    });
     expect(container.volumeMounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "config", readOnly: true }),

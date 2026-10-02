@@ -17,7 +17,7 @@ telegram:
   allowedChats: ["1"]
 model:
   provider: openai-codex
-  id: gpt-5.4
+  id: gpt-6-sol
   authPath: ${root}/auth/auth.json
 data:
   directory: ${root}/data

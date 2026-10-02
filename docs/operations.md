@@ -2,8 +2,8 @@
 
 SQLite is the source of truth for accepted Telegram updates, Pi session entries, tool audit
 metadata, Telegram outbox state, and the shared notebook (notes, overview, revisions, mutation
-receipts, and derived FTS index). Pi provider authentication is a separate mutable store and must
-be backed up independently with filesystem permissions preserved.
+receipts, and derived FTS index). Pi provider and MCP OAuth authentication are separate mutable
+stores on the auth volume and must be backed up independently with filesystem permissions preserved.
 
 ## Backup
 
@@ -49,11 +49,17 @@ repopulates an overview that a participant cleared.
 
 1. Record the current image digest and configuration revision.
 2. Run the quality and migration suites for the target version.
-3. Back up SQLite and Pi authentication state.
+3. Back up SQLite and Pi authentication state independently, with filesystem permissions
+   preserved. The Pi 1.0 migration retains stored 0.85 session entries, but this backup is the
+   rollback point for both conversation and provider state.
 4. Stop the existing single replica.
 5. Start the new image against the existing volumes.
 6. Confirm the schema version, readiness, session continuity, one authorized conversation, and
    outbox delivery.
+
+Keep the deployment at one consumer throughout the rollout. Do not run Pi 0.85 and Pi 1.0 against
+the same live polling bot at once. Pi Durable is not part of this release; Klaus continues to use
+its existing SQLite session boundary while Durable's maturity is evaluated separately.
 
 Inspect schema versions without exposing conversation content:
 

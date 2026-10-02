@@ -15,7 +15,7 @@ telegram:
   allowedChats: ["123", "456", "-100789"]
 model:
   provider: openai-codex
-  id: gpt-5.4
+  id: gpt-6-sol
   reasoning: high
   authPath: ${root}/auth/auth.json
 data:
@@ -41,6 +41,7 @@ describe("configuration and secrets", () => {
     });
     expect(config.mcp[0]?.id).toBe("home");
     expect(config.mcp[0]?.tools).toBeUndefined();
+    expect(config.mcp[0]?.exposure).toBe("deferred");
     expect(() => parseConfig("telegram: {}")).toThrow();
   });
 
@@ -120,8 +121,17 @@ describe("configuration and secrets", () => {
     );
 
     expect(unrestricted.mcp[0]?.tools).toBeUndefined();
+    expect(unrestricted.mcp[0]?.exposure).toBe("deferred");
     expect(restricted.mcp[0]?.tools).toEqual(["get_state", "call_service"]);
     expect(disabled.mcp[0]?.tools).toEqual([]);
+
+    const direct = parseConfig(
+      validYaml("/tmp/klaus").replace("    url:", "    exposure: direct\n    url:"),
+    );
+    expect(direct.mcp[0]?.exposure).toBe("direct");
+    expect(() =>
+      parseConfig(validYaml("/tmp/klaus").replace("    url:", "    exposure: codemode\n    url:")),
+    ).toThrow();
   });
 
   it("supports a fixed stdio command with redacted secret environment files", () => {

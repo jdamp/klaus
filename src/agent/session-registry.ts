@@ -26,12 +26,12 @@ export class SessionRegistry {
     const inFlight = this.#creating.get(sessionId);
     if (inFlight) return inFlight;
 
-    const creation = this.factory.create(sessionId, preferredModel).then((created) => {
+    const creation = this.factory.create(sessionId, preferredModel).then(async (created) => {
       this.#cache.set(sessionId, created);
       while (this.#cache.size > this.maximum) {
         const oldest = this.#cache.entries().next().value;
         if (!oldest) break;
-        oldest[1].dispose();
+        await oldest[1].dispose();
         this.#cache.delete(oldest[0]);
       }
       return created;
@@ -65,8 +65,10 @@ export class SessionRegistry {
     return this.#userCancellations.delete(sessionId);
   }
 
-  dispose(): void {
-    for (const session of this.#cache.values()) session.dispose();
+  async dispose(): Promise<void> {
+    await Promise.allSettled(
+      [...this.#cache.values()].map((session) => Promise.resolve(session.dispose())),
+    );
     this.#cache.clear();
     this.#creating.clear();
     this.#userCancellations.clear();

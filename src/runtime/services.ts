@@ -22,11 +22,19 @@ import type { MemoryTurnContextRegistry } from "../memory/context.js";
 import type { KeyedQueue } from "../dispatch/keyed-queue.js";
 import type { TelegramPoller } from "../telegram/poller.js";
 import type { TelegramVisualInputLoader } from "../telegram/visual-input.js";
+import type { SecretRedactor } from "../security/secrets.js";
+import type { PiMcpConnectionRegistry, PiMcpHealthRegistry } from "../mcp/pi-adapter.js";
 import type {
   AvailableModel,
   SessionStatus,
   TelegramSessionControl,
 } from "../telegram/command-handler.js";
+
+function isAvailableModelId(id: string): boolean {
+  const versionedGpt = /^gpt-(\d+)(?=$|[.-])/i.exec(id);
+  if (!versionedGpt) return true;
+  return Number(versionedGpt[1]) >= 6;
+}
 
 export class TelegramRuntimeComponent implements ServiceComponent {
   readonly name = "telegram";
@@ -112,6 +120,12 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
     },
     private readonly visualInput?: TelegramVisualInputLoader,
     private readonly turnContexts?: TurnContextRegistry,
+    private readonly mcp?: {
+      audits: ToolAuditRepository;
+      redactor: SecretRedactor;
+      health?: PiMcpHealthRegistry;
+      connections?: PiMcpConnectionRegistry;
+    },
   ) {}
 
   start(signal: AbortSignal): Promise<void> {
@@ -122,6 +136,7 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
       (sessionId) => this.capabilities.tools({ sessionId }),
       this.systemPrompt,
       this.memory?.contexts,
+      this.mcp,
     );
     this.#registry = new SessionRegistry(factory);
     this.#chats = new ChatRepository(this.database);
@@ -180,6 +195,7 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
       warning ??= "Model availability check failed; showing cached models.";
     }
     const models = available
+      .filter((model) => isAvailableModelId(model.id))
       .map((model) => ({ provider: model.provider, id: model.id }))
       .sort((left, right) =>
         `${left.provider}/${left.id}`.localeCompare(`${right.provider}/${right.id}`),
@@ -247,6 +263,6 @@ export class SessionComponent implements ServiceComponent, TelegramSessionContro
 
   async stop(): Promise<void> {
     await this.#registry?.abortAll();
-    this.#registry?.dispose();
+    await this.#registry?.dispose();
   }
 }

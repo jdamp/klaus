@@ -12,7 +12,7 @@ import { parseConfig } from "../config.js";
 import { OutboxWorker } from "../delivery/outbox-worker.js";
 import { KeyedQueue } from "../dispatch/keyed-queue.js";
 import { HealthServer } from "../health/server.js";
-import { McpRegistry } from "../mcp/registry.js";
+import { PiMcpConnectionRegistry, PiMcpHealthRegistry } from "../mcp/pi-adapter.js";
 import { AgentToolCatalog } from "../capabilities/catalog.js";
 import { MealieProvider } from "../integrations/mealie/provider.js";
 import { TurnContextRegistry } from "../agent/turn-context.js";
@@ -57,15 +57,6 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   const telegramToken = await readSecret(config.telegram.tokenFile);
   const redactor = new SecretRedactor();
   redactor.add(telegramToken);
-  for (const server of config.mcp) {
-    if ("url" in server && server.tokenFile) {
-      redactor.add(await readSecret(server.tokenFile));
-    } else if ("secretEnv" in server) {
-      for (const path of Object.values(server.secretEnv)) {
-        redactor.add(await readSecret(path));
-      }
-    }
-  }
   let mealieKey: string | undefined;
   if (config.mealie) {
     try {
@@ -92,11 +83,10 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   const turnContexts = new TurnContextRegistry();
   const memoryRepository = new MemoryRepository(database, config.memory);
   const memoryContexts = new MemoryTurnContextRegistry();
+  const mcpHealth = new PiMcpHealthRegistry();
+  const mcpConnections = new PiMcpConnectionRegistry();
   const memory = new MemoryProvider(memoryRepository, memoryContexts, audits, redactor);
-  const mcp = new McpRegistry(config.mcp, audits, undefined, redactor);
-  const providers = [memory, mcp] as Array<
-    MemoryProvider | McpRegistry | MealieProvider | ImageGenerationProvider
-  >;
+  const providers = [memory] as Array<MemoryProvider | MealieProvider | ImageGenerationProvider>;
   if (config.mealie && mealieKey) {
     providers.push(new MealieProvider(config.mealie, mealieKey, audits, redactor));
   }
@@ -134,6 +124,7 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
     },
     visualInput,
     turnContexts,
+    { audits, redactor, health: mcpHealth, connections: mcpConnections },
   );
   const chats = new ChatRepository(database);
   const delivery = new OutboxWorker(outbox, api);
@@ -164,7 +155,10 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
     if (!applicationReference.current) {
       return { live: true, ready: false, integrations: {} };
     }
-    const integrations = await applicationReference.current.health();
+    const integrations = {
+      ...(await applicationReference.current.health()),
+      ...mcpHealth.snapshot(config.mcp.map((server) => server.id)),
+    };
     const core = ["persistence", "sessions", "delivery", "telegram"];
     return {
       live: true,

@@ -129,7 +129,7 @@ async function main(): Promise<void> {
       return response;
     } finally {
       contexts.clear(sessionId, token);
-      managed.dispose();
+      await managed.dispose();
     }
   };
 
@@ -317,7 +317,7 @@ async function main(): Promise<void> {
     } catch (error) {
       compactionError = error instanceof Error ? error.message : "Compaction evaluation failed";
     } finally {
-      managed.dispose();
+      await managed.dispose();
     }
   }
 

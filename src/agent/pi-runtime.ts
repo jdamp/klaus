@@ -3,30 +3,39 @@ import { dirname, resolve } from "node:path";
 
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
+  compact,
   createAgentSession,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
   SettingsManager,
+  type ExtensionContext,
   type AgentSession,
   type ExtensionFactory,
   type ResourceDiagnostic,
+  type SessionBeforeCompactEvent,
+  type SessionBeforeCompactResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
 import type { AppConfig } from "../config.js";
 import type { SessionEntryRepository } from "../persistence/repositories.js";
+import type { ToolAuditRepository } from "../persistence/repositories.js";
+import type { SecretRedactor } from "../security/secrets.js";
 import {
   ATTRIBUTION_COMPACTION_GUIDANCE,
   memoryTurnSystemPrompt,
   type MemoryTurnContextRegistry,
 } from "../memory/context.js";
+import { createTrustedExtensionFactories } from "./extensions.js";
+import { createKlausMcpExtension, loadPiMcpConfig } from "../mcp/pi-adapter.js";
+import type { PiMcpConnectionRegistry, PiMcpHealthRegistry } from "../mcp/pi-adapter.js";
 
 export type ManagedSession = {
   session: AgentSession;
   abort(): Promise<void>;
   persist(): void;
-  dispose(): void;
+  dispose(): void | Promise<void>;
 };
 
 export const HOUSEHOLD_SYSTEM_PROMPT = [
@@ -39,6 +48,50 @@ export const HOUSEHOLD_SYSTEM_PROMPT = [
 
 export function attributionCompactionInstructions(prior?: string): string {
   return [prior, ATTRIBUTION_COMPACTION_GUIDANCE].filter(Boolean).join("\n\n");
+}
+
+export function createAttributionCompactionExtension(): ExtensionFactory {
+  return (pi) => {
+    pi.on("session_before_compact", async (event, context) =>
+      runAttributionCompaction(event, context),
+    );
+  };
+}
+
+export async function runAttributionCompaction(
+  event: SessionBeforeCompactEvent,
+  context: ExtensionContext,
+): Promise<SessionBeforeCompactResult> {
+  const model = context.model;
+  if (!model) return { cancel: true };
+
+  try {
+    const compaction = await compact(
+      event.preparation,
+      model,
+      undefined,
+      undefined,
+      attributionCompactionInstructions(event.customInstructions),
+      event.signal,
+      context.thinkingLevel,
+      (summaryModel, transcript, options) =>
+        context.modelRegistry.streamSimple(summaryModel, transcript, options),
+    );
+    return { compaction };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      context.ui.notify(`Klaus compaction failed and was cancelled: ${message}`, "error");
+    } catch {
+      // The event still has to cancel if this runtime has no working notification surface.
+    }
+    // Returning cancel prevents Pi from falling through to its default, unguided summary.
+    return { cancel: true };
+  }
+}
+
+export function sdkResourceRoot(config: AppConfig): string {
+  return resolve(dirname(config.model.authPath), "pi-sdk-resources");
 }
 
 export async function loadHouseholdSystemPrompt(config: AppConfig): Promise<string> {
@@ -83,6 +136,12 @@ export class PiSessionFactory {
       readonly ToolDefinition[] | ((sessionId: string) => readonly ToolDefinition[]) = [],
     private readonly systemPrompt = HOUSEHOLD_SYSTEM_PROMPT,
     private readonly memoryContexts?: MemoryTurnContextRegistry,
+    private readonly mcp?: {
+      audits: ToolAuditRepository;
+      redactor: SecretRedactor;
+      health?: PiMcpHealthRegistry;
+      connections?: PiMcpConnectionRegistry;
+    },
   ) {}
 
   async create(
@@ -117,22 +176,37 @@ export class PiSessionFactory {
           }));
         }
       : undefined;
+    const compactionExtension = createAttributionCompactionExtension();
+    const mcpFactory =
+      this.mcp && this.config.mcp.length > 0
+        ? createKlausMcpExtension(
+            this.config.mcp,
+            await loadPiMcpConfig(this.config.mcp, this.mcp.redactor),
+            this.mcp.audits,
+            this.mcp.redactor,
+            this.mcp.health,
+            this.mcp.connections,
+            sessionId,
+          )
+        : undefined;
+    const customTools =
+      typeof this.customTools === "function" ? this.customTools(sessionId) : this.customTools;
+    const hasDeferredTools = customTools.some((tool) => tool.exposure === "deferred");
+    const resourceRoot = sdkResourceRoot(this.config);
+    await mkdir(resourceRoot, { recursive: true, mode: 0o700 });
     const resourceLoader = new DefaultResourceLoader({
-      cwd: process.cwd(),
-      agentDir: dirname(this.config.model.authPath),
+      cwd: resourceRoot,
+      agentDir: resourceRoot,
       additionalSkillPaths: this.config.skills.paths,
-      noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
       systemPrompt: this.systemPrompt,
-      ...(memoryExtension
-        ? {
-            extensionFactories: [
-              { name: "klaus-memory-context", hidden: true, factory: memoryExtension },
-            ],
-          }
-        : {}),
+      extensionFactories: createTrustedExtensionFactories({
+        ...(memoryExtension ? { memory: memoryExtension } : {}),
+        compaction: compactionExtension,
+        ...(mcpFactory ? { mcpFactory } : {}),
+      }),
       skillsOverride: (base) => ({
         skills: base.skills.filter((skill) =>
           this.config.skills.paths.some((path) => skill.filePath.startsWith(resolve(path))),
@@ -176,8 +250,6 @@ export class PiSessionFactory {
       defaultTools: [],
     });
 
-    const customTools =
-      typeof this.customTools === "function" ? this.customTools(sessionId) : this.customTools;
     const { session } = await createAgentSession({
       modelRuntime: this.runtime,
       model,
@@ -185,38 +257,33 @@ export class PiSessionFactory {
       resourceLoader,
       sessionManager,
       settingsManager,
-      noTools: "all",
-      tools: customTools.map((tool) => tool.name),
+      noTools: "builtin",
       customTools: [...customTools],
     });
 
-    // Pi 0.85 exposes one shared default compaction path for manual, threshold,
-    // and overflow compaction. Decorate it so every built-in summary receives
-    // the same attribution requirement; explicit manual instructions are retained.
-    const compactable = session as unknown as {
-      _runDefaultCompaction: (...argumentsValue: unknown[]) => Promise<unknown>;
-    };
-    if (typeof compactable._runDefaultCompaction === "function") {
-      const original = compactable._runDefaultCompaction.bind(session);
-      compactable._runDefaultCompaction = (...argumentsValue: unknown[]) => {
-        const prior = typeof argumentsValue[4] === "string" ? argumentsValue[4] : undefined;
-        argumentsValue[4] = attributionCompactionInstructions(prior);
-        return original(...argumentsValue);
-      };
+    await session.bindExtensions({});
+    if (hasDeferredTools) {
+      session.setActiveToolsByName([...session.getActiveToolNames(), "tool_search"]);
     }
 
     return {
       session,
       abort: () => session.abort(),
       persist: () => this.entries.replace(sessionId, session.sessionManager.getEntries()),
-      dispose: () => session.dispose(),
+      dispose: async () => {
+        session.dispose();
+        await this.mcp?.connections?.closeSession(sessionId);
+        this.mcp?.health?.clearSession(sessionId);
+      },
     };
   }
 
   async skillDiagnostics(): Promise<ResourceDiagnostic[]> {
+    const resourceRoot = sdkResourceRoot(this.config);
+    await mkdir(resourceRoot, { recursive: true, mode: 0o700 });
     const loader = new DefaultResourceLoader({
       cwd: process.cwd(),
-      agentDir: dirname(this.config.model.authPath),
+      agentDir: resourceRoot,
       additionalSkillPaths: this.config.skills.paths,
       noExtensions: true,
       noPromptTemplates: true,

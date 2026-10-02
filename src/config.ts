@@ -47,6 +47,7 @@ const imageGenerationSchema = z
 const mcpCommonSchema = {
   id: mcpId,
   tools: z.array(z.string().min(1)).optional(),
+  exposure: z.enum(["deferred", "direct"]).default("deferred"),
   timeoutMs: z.number().int().positive().default(15_000),
   maxResultBytes: z
     .number()

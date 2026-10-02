@@ -32,12 +32,14 @@ memory:
 
 model:
   provider: openai-codex
-  id: gpt-5.4
+  id: gpt-6-sol
   reasoning: medium
   authPath: /var/lib/klaus-agent-auth/auth.json
   contextTokens: 4096
   retryLimit: 0
 
+# This smoke config intentionally has no MCP servers. Configured servers default to deferred
+# exposure; set `exposure: direct` when their permitted catalogue should be declared immediately.
 mcp: []
 skills:
   paths: []

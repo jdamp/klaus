@@ -242,7 +242,7 @@ describe("Mealie 3.28 recipe regression", () => {
 
   it("rejects a public URL with a path, credentials, query, or fragment", () => {
     const yaml = (url: string) =>
-      `telegram:\n  tokenFile: /tmp/telegram\n  allowedUsers: ["1"]\n  allowedChats: ["1"]\nmodel:\n  provider: openai-codex\n  id: gpt-5.4\n  authPath: /tmp/auth.json\ndata:\n  directory: /tmp/data\nmcp: []\nskills:\n  paths: []\nhealth: {}\nmealie:\n  baseUrl: https://mealie.test\n  publicUrl: ${url}\n  apiKeyFile: /tmp/mealie-key\n`;
+      `telegram:\n  tokenFile: /tmp/telegram\n  allowedUsers: ["1"]\n  allowedChats: ["1"]\nmodel:\n  provider: openai-codex\n  id: gpt-6-sol\n  authPath: /tmp/auth.json\ndata:\n  directory: /tmp/data\nmcp: []\nskills:\n  paths: []\nhealth: {}\nmealie:\n  baseUrl: https://mealie.test\n  publicUrl: ${url}\n  apiKeyFile: /tmp/mealie-key\n`;
     for (const url of [
       "https://host.test/g/home",
       "https://a:b@host.test",

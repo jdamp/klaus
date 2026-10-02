@@ -1,15 +1,17 @@
 # Klaus Agent
 
-Klaus Agent is a private Telegram home assistant built on Pi's headless libraries. It keeps one
-durable conversation per allowlisted chat and connects to home services through operator-configured
-Streamable HTTP MCP servers and optional native capability providers. Configured MCP servers expose their discovered tools by default; Pi's coding tools
-or TUI.
+Klaus Agent is a private Telegram home assistant built on Pi 1.0's headless libraries. It keeps one
+SQLite-backed conversation per allowlisted chat and connects to home services through operator-
+configured Streamable HTTP or stdio MCP servers and optional native capability providers. MCP tools
+are deferred by default and loaded on demand; operators can select direct exposure per server. Pi's
+coding tools and TUI are not enabled. Pi Durable remains deferred pending further stability.
 
 ## Local development
 
-Requirements: Node.js 22.13 or newer and npm.
+Requirements: Node.js 22.19 or newer and npm 12.2.0. Pi 1.0 publishes a dependency shrinkwrap
+that older npm versions install ahead of Klaus's security override.
 
-1. Install the exact dependencies with `npm ci`.
+1. Install the exact dependencies with `npx --yes npm@12.2.0 ci`.
 2. Copy `examples/config.local.yaml` to `config.yaml`.
 3. Create `.local/secrets`, `.local/pi-auth`, and `.local/data`. Keep them private
    (directories mode `0700`, secret files mode `0600`).
@@ -42,10 +44,11 @@ as `/status` in a private chat.
 - `/status` reports the active model and reasoning level, cumulative Pi-recorded token usage and
   cost for the current session, and current context-window utilization. It cannot report provider
   subscription quota, and context usage can be unknown until the first response after compaction.
-- `/model` opens a paginated inline selector containing every model Pi currently reports as
-  available from authenticated backends, plus controls for the active model's reasoning level.
-  `/model provider/model-id` selects an exact model directly. The model selection is stored per chat
-  and survives restart, cache eviction, compaction, and `/new`.
+- `/model` opens a paginated inline selector of models Pi reports as available from authenticated
+  backends, plus controls for the active model's reasoning level. Versioned `gpt-N` models are
+  limited to major version 6 or newer; IDs outside that naming pattern remain available.
+  `/model provider/model-id` selects an exact available model directly. The model selection is
+  stored per chat and survives restart, cache eviction, compaction, and `/new`.
 - `/compact` asks Pi to summarize older context. Compaction itself uses the selected model and can
   consume additional tokens.
 - `/stop` requests cancellation of the operation active in that chat. It does not affect another
@@ -175,13 +178,19 @@ added per turn to either the built-in or configured base prompt.
 
 ## Generic MCP configuration
 
-Each MCP entry has a stable local `id`, an HTTP(S) Streamable HTTP `url`, and an optional mounted
-`tokenFile`. Omitting `tools` exposes every valid tool discovered from that configured server:
+Each MCP entry has a stable local `id`, an HTTP(S) Streamable HTTP `url` or a fixed stdio command,
+and optional mounted secret files. Secret values are loaded into memory for the Pi MCP connection;
+they do not go in YAML, command arguments, conversation history, or model instructions. With `tools`
+omitted, every valid tool from the configured server is permitted. The default `exposure: deferred`
+keeps its full catalogue out of the initial model declarations and lets `tool_search` load matching
+tools. Select `exposure: direct` to declare the permitted catalogue immediately:
 
 ```yaml
 mcp:
   - id: home
     url: http://home-assistant-mcp:8086/mcp
+    exposure: deferred # default; tool_search loads matching tools
+    # exposure: direct  # declare all permitted tools immediately
 ```
 
 Set a non-empty list to restrict exposure, or an empty list to expose none:
@@ -191,11 +200,13 @@ tools: [ha_get_state, ha_set_todo_item] # only these tools
 # tools: []                             # no tools
 ```
 
-The model sees namespaced names such as `home__ha_get_state`; it never receives the bearer token.
-New tools reported by an unrestricted configured server become available after discovery or
-reconnection. Only configure endpoints whose catalogue you trust, and use the optional restriction
-when a server also exposes operations you do not want available. The intended first deployment may
-point `home` at the existing Home Assistant MCP server, but there is no Home Assistant-specific code.
+The model sees Pi names such as `mcp__home__ha_get_state`; characters outside letters, digits, and
+underscores are normalized, and long or colliding names receive a hash suffix. Existing historical
+tool calls keep their stored names and are not replayed. New calls use Pi's namespace. New tools from
+an unrestricted server are available after discovery or session recreation. Use `tools` to restrict
+the server catalogue, or `tools: []` to disable its tools. Only configure endpoints whose catalogue
+you trust. The intended first deployment may point `home` at the existing Home Assistant MCP
+server, but there is no Home Assistant-specific code.
 
 A local stdio MCP server can instead be configured with a fixed executable and argument vector. Ordinary environment values are declared inline; secret values are read from mounted files immediately before the child starts:
 
