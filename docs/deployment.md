@@ -1,5 +1,26 @@
 # Deployment and staged rollout
 
+## Public image release
+
+`.github/workflows/publish-image.yml` runs formatting, linting, type checking, tests, the
+application build, and a container smoke build for pull requests to `main` and pushes to `main`.
+Only a successful `main` push publishes the Dockerfile's `final` target to
+`ghcr.io/jdamp/klaus-agent:sha-<full-commit-sha>`. Read the `Published
+ghcr.io/jdamp/klaus-agent@sha256:...` reference from that run's summary. Use the digest, not the
+commit tag, in the k3s manifest.
+
+GHCR creates the package as private on its first publication. In the package's GitHub settings,
+change its visibility to public, then verify a pull of the reported digest from a client that is
+not logged in to `ghcr.io`. Confirm the target k3s node architecture is included in the published
+image and make a fresh pull on that node before replacing the deployment image. A public image
+needs no Kubernetes registry pull Secret. The workflow uses its repository `GITHUB_TOKEN` to push;
+the cluster and this repository need no GHCR credential.
+
+For each release, record the source commit, published digest, previous durable digest, configuration
+revision, data and Pi authentication backup locations, rollout time, and verification results. The
+first cutover from ttl.sh may have no previous durable digest; do not treat the expiring ttl.sh
+reference as a reliable rollback image. Preserve the pre-upgrade data and configuration backups.
+
 ## k3s deployment
 
 The checked-in manifests target the pre-provisioned `klaus` namespace. Confirm the target before
@@ -16,8 +37,10 @@ long-poll consumer before starting its replacement. It has separate persistent c
 application data and mutable Pi authentication state, while configuration and service credentials
 are mounted read-only.
 
-1. Build and push an immutable image. Replace `ghcr.io/example/klaus-agent:1.0.0` in
-   `deploy/k3s/klaus-agent.yaml` with that tag or, preferably, its registry digest.
+1. Confirm the quality and container jobs passed on `main`, the GHCR image is public, and the
+   reported digest can be pulled without authentication. Replace the image in
+   `deploy/k3s/klaus-agent.yaml` with `ghcr.io/jdamp/klaus-agent@sha256:<published-digest>` and
+   record the previous digest before applying the manifest.
 2. Copy `deploy/k3s/secret.example.yaml` outside the repository, replace the placeholders, apply
    it, and do not commit the resulting file. Create a dedicated Kaneo API key under the automation
    account and set `kaneo-api-key`; do not reuse a personal key. If enabling Mealie, first upgrade it
