@@ -119,6 +119,22 @@ image documented in `docs/releases/2026-10-03-ghcr-cutover.md`; one replica was 
 Mealie capabilities. The AI/OpenAI import combination, Telegram delivery, ambiguous-filter checks,
 organizer mutations, and outage recovery remain outstanding.
 
+Follow-up acceptance (2026-10-03 UTC): the accepted GHCR rollout reported one ready Klaus replica
+and healthy Mealie capabilities. Two uniquely named disposable organizers (one category and one
+tag) were created, listed, and renamed with read-back. The first assignment through the deployed
+tool partially applied the tag but ignored the category; an independent read-back showed the
+recipe still had 12 ingredients and six instructions. The cause was the wrong recipe update field
+(`categories` instead of Mealie's `recipeCategory`).
+
+Updated code passed the full test suite (143 tests) and was staged **only** for audited one-off
+tool calls. A single corrected assignment applied both organizers; explicit clearing of each type
+preserved the omitted type, all ingredient references, and recipe instructions. Both organizer
+assignments were restored to their original empty state; the non-destructive disposable organizer
+records remain. Text, exact category, tag, and food searches returned bounded pages with public
+links; a missing filter was rejected. Regression tests reject ambiguous food/category names
+before recipe search. The staged fix was removed: the running GHCR image **still contains the
+category assignment bug** until a new image is reviewed and deployed.
+
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
 full tool results.
@@ -129,7 +145,9 @@ full tool results.
       report the documented partial/indeterminate outcome.
 - [x] Existing-recipe OpenAI reparsing preserves ordering, section references, and verification
       (one opt-in, audited live run with the updated code staged outside the running image).
-- [ ] Text, category, tag, and ingredient searches resolve exact filters and reject ambiguity.
+- [x] Text, category, tag, and ingredient searches resolve exact filters and reject ambiguity
+      (live positive and missing-filter checks; deterministic ambiguous-name preflight tests).
 - [ ] Category/tag list, create, rename, assignment, replacement, and explicit clear succeed;
-      deletion and out-of-scope tools are absent.
+      deletion and out-of-scope tools are absent. The corrected path passed staged live checks,
+      but the running image has not been updated with the category-assignment fix.
 - [ ] A temporary Mealie outage degrades only Mealie and recovery works without restarting Klaus.
