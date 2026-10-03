@@ -77,9 +77,11 @@ describe("packaging and deployment examples", () => {
       template: {
         spec: {
           automountServiceAccountToken: boolean;
+          imagePullSecrets?: unknown[];
           terminationGracePeriodSeconds: number;
           securityContext: Record<string, unknown>;
           containers: Array<{
+            image: string;
             env: Array<{ name: string; value: string }>;
             securityContext: {
               allowPrivilegeEscalation: boolean;
@@ -97,12 +99,14 @@ describe("packaging and deployment examples", () => {
     expect(spec.replicas).toBe(1);
     expect(spec.strategy.type).toBe("Recreate");
     expect(spec.template.spec.automountServiceAccountToken).toBe(false);
+    expect(spec.template.spec.imagePullSecrets).toBeUndefined();
     expect(spec.template.spec.terminationGracePeriodSeconds).toBeGreaterThan(30);
     expect(spec.template.spec.securityContext).toMatchObject({
       runAsNonRoot: true,
       seccompProfile: { type: "RuntimeDefault" },
     });
     const container = spec.template.spec.containers[0]!;
+    expect(container.image).toMatch(/^ghcr\.io\/jdamp\/klaus-agent@sha256:[a-f0-9]{64}$/);
     expect(container.securityContext).toMatchObject({
       allowPrivilegeEscalation: false,
       readOnlyRootFilesystem: true,

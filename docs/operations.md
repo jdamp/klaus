@@ -47,12 +47,17 @@ Migrations run transactionally and idempotently at startup before Telegram polli
 The initial memory migration creates an empty revision-1 `overview` only when absent; it never
 repopulates an overview that a participant cleared.
 
-For container releases, take the exact `ghcr.io/jdamp/klaus-agent@sha256:...` reference from the
+The checked-in first GHCR release pins source commit
+`8fa8a59889188eae718f8f492c945ef599667471` at
+`ghcr.io/jdamp/klaus-agent@sha256:6a11b2cdaa0e506c36b287421f5493deed1a67450c60b251c085bd1fb059738d`.
+The 2026-10-03 `main` run passed every gate, and an anonymous pull verified all image layers.
+For later releases, take the exact `ghcr.io/jdamp/klaus-agent@sha256:...` reference from the
 successful `main` workflow run. Confirm that GHCR serves it publicly and that the target k3s node
-is `amd64` and can pull it before changing `deploy/k3s/klaus-agent.yaml`. Record both the new and previous durable
-digests with the matching configuration revision and data and Pi authentication backups. Image
-pulls from this public package do not require a registry Secret. If the previous image is still on
-ttl.sh, its 24-hour expiry means it is not a durable rollback target.
+is `amd64` and can pull it before applying `deploy/k3s/klaus-agent.yaml`. Record both the new and
+previous durable digests with the matching configuration revision and data and Pi authentication
+backups. Image pulls from this public package do not require a registry Secret. The first cutover
+has no previous durable digest: the existing ttl.sh image has a 24-hour expiry and is not a durable
+rollback target.
 
 1. Record the current image digest and configuration revision.
 2. Run the quality and migration suites for the target version.

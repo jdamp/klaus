@@ -145,7 +145,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: klaus-agent
-          image: ttl.sh/klaus-pi-1-0-20261002110504:24h@sha256:795247e0f5560b0da998473217967485381680a1f11b4c9b2391e5bd967ceeb7
+          image: ghcr.io/jdamp/klaus-agent@sha256:6a11b2cdaa0e506c36b287421f5493deed1a67450c60b251c085bd1fb059738d
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/klaus-agent/config.yaml"]
           env:
