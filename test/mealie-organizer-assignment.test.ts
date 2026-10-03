@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MealieClient, type MealieFetch } from "../src/integrations/mealie/client.js";
 import { OrganizerService } from "../src/integrations/mealie/organizers/service.js";
+import { RecipeService } from "../src/integrations/mealie/recipes/service.js";
 
 const config = {
   baseUrl: "https://mealie.test",
@@ -68,6 +69,32 @@ describe("Mealie 3.28 recipe organizers", () => {
     expect(cleared.tags).toEqual([]);
     expect(recipe.recipeIngredient).toEqual(original.recipeIngredient);
     expect(recipe.recipeInstructions).toEqual(original.recipeInstructions);
+  });
+
+  it("rejects ambiguous recipe filters before querying recipes", async () => {
+    let recipeSearches = 0;
+    const fetcher: MealieFetch = async (input) => {
+      const url = new URL(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
+      if (url.pathname === "/api/recipes") recipeSearches += 1;
+      if (url.pathname === "/api/organizers/categories" || url.pathname === "/api/foods") {
+        return response({
+          items: [
+            { id: "one", name: "Same" },
+            { id: "two", name: "Same" },
+          ],
+        });
+      }
+      throw new Error("Unexpected request");
+    };
+    const service = new RecipeService(new MealieClient(config, "fixture-key", fetcher));
+    for (const filters of [{ categories: ["Same"] }, { ingredients: ["Same"] }]) {
+      await expect(service.search(filters, new AbortController().signal)).rejects.toThrow(
+        "ambiguous",
+      );
+    }
+    expect(recipeSearches).toBe(0);
   });
 
   it("rejects ambiguous category names before writing a recipe", async () => {
