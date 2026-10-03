@@ -114,9 +114,10 @@ a clean build from `a90b912` was deployed as the digest-pinned, **24-hour tempor
 `ttl.sh/klaus-mealie-optin-a90b912-20260929205331:24h@sha256:b596319016082e079596b5f6bda517ec4b78cf3d9677860744dd72feaf9c474e`.
 Klaus readiness and Mealie capability health were both healthy, both import and reparse tools
 exposed the opt-in flag, and a structured-food filter found the saved recipe. This is not a
-durable registry publication and expires unless replaced. The AI/OpenAI import combination,
-Telegram delivery, ambiguous-filter checks, organizer mutations, and outage recovery remain
-outstanding.
+durable registry publication. On 2026-10-03 it was replaced by the public, digest-pinned GHCR
+image documented in `docs/releases/2026-10-03-ghcr-cutover.md`; one replica was ready with healthy
+Mealie capabilities. The AI/OpenAI import combination, Telegram delivery, ambiguous-filter checks,
+organizer mutations, and outage recovery remain outstanding.
 
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or

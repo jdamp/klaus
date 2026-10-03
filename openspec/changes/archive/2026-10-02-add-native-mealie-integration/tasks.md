@@ -48,10 +48,10 @@
 
 ## 7. Verification and Rollout
 
-First version accepted for archiving on 2026-10-02. Tasks 7.2–7.4 remain unchecked: AI import was verified only after Klaus was enabled; the digest-pinned deployment used a temporary 24-hour image; and the full strategy, Telegram, organizer, and outage acceptance matrix was not run. These checks are not claimed complete by this archive.
+First version accepted for archiving on 2026-10-02 with incomplete rollout checks. On 2026-10-03, the operator accepted the Klaus rollout after replacement with a durable, digest-pinned GHCR image; task 7.3 is now complete. Task 7.2 remains unchecked because AI import was verified only after Klaus was enabled; task 7.4 remains open until its full acceptance matrix is exercised. Archiving does not imply either check passed.
 
 - [x] 7.1 Run formatting, linting, type checking, all unit/integration tests, production build, and strict OpenSpec validation for `add-native-mealie-integration`; verify every command succeeds.
 - [ ] 7.2 Upgrade the self-hosted Mealie deployment from 3.22.0 to a current release, configure its default AI provider, create a dedicated automation API key outside the repository, and verify the unified AI import works in Mealie before enabling Klaus.
-- [ ] 7.3 Build and deploy an immutable Klaus image with the mounted Mealie key, then verify readiness remains true and Mealie health reports healthy without exposing the key or its path.
+- [x] 7.3 Build and deploy an immutable Klaus image with the mounted Mealie key, then verify readiness remains true and Mealie health reports healthy without exposing the key or its path.
 - [ ] 7.4 Against disposable recipes, exercise scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI imports, an existing-recipe reparse, text/category/tag/ingredient searches, organizer create/rename/assign/clear, and a temporary Mealie outage; verify outcomes in both Telegram and Mealie and record privacy-safe evidence.
 - [x] 7.5 Inspect the live native catalogue, logs, health output, SQLite tool audits, and persisted session data; verify shopping-list, meal-planning, upload, and deletion tools are absent and the Mealie API key appears nowhere outside its mounted secret file.
