@@ -135,6 +135,13 @@ links; a missing filter was rejected. Regression tests reject ambiguous food/cat
 before recipe search. The staged fix was removed: the running GHCR image **still contains the
 category assignment bug** until a new image is reviewed and deployed.
 
+A separate, single opt-in OpenAI reparse of the already AI-imported disposable recipe succeeded on
+the deployed tool without creating another recipe: 11 usable ingredients remained, ten gained
+food IDs and seven gained unit IDs. Ordered reference IDs, section titles, instructions, and
+existing tags were preserved; an independent read confirmed the result and its public page
+returned HTTP 200. This verifies the parser after an AI import, **not** the AI/OpenAI mode within
+a new import. The current-pod log, SQLite, and health scans again found no Mealie key.
+
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
 full tool results.
