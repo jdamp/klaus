@@ -116,8 +116,8 @@ Klaus readiness and Mealie capability health were both healthy, both import and 
 exposed the opt-in flag, and a structured-food filter found the saved recipe. This is not a
 durable registry publication. On 2026-10-03 it was replaced by the public, digest-pinned GHCR
 image documented in `docs/releases/2026-10-03-ghcr-cutover.md`; one replica was ready with healthy
-Mealie capabilities. The AI/OpenAI import combination, Telegram delivery, ambiguous-filter checks,
-organizer mutations, and outage recovery remain outstanding.
+Mealie capabilities. At that point, the AI/OpenAI import combination, Telegram delivery,
+ambiguous-filter checks, organizer mutations, and outage recovery remained outstanding.
 
 Follow-up acceptance (2026-10-03 UTC): the accepted GHCR rollout reported one ready Klaus replica
 and healthy Mealie capabilities. Two uniquely named disposable organizers (one category and one
@@ -142,19 +142,31 @@ existing tags were preserved; an independent read confirmed the result and its p
 returned HTTP 200. This verifies the parser after an AI import, **not** the AI/OpenAI mode within
 a new import. The current-pod log, SQLite, and health scans again found no Mealie key.
 
+First-version close-out (2026-10-03 UTC): the operator confirmed Telegram delivery and a recipe
+import via Telegram, accepted the durable Klaus rollout, and waived both additional OpenAI-at-import
+smoke combinations because no new disposable URLs were approved. The operator also waived a live
+Mealie outage test. Restarts and deterministic provider-recovery tests are **not** evidence of a
+live connectivity outage. The organizer assignment correction merged in PR #4 and passed CI;
+a new GHCR image was published, but the running deployment still uses the prior image with the
+known category-assignment bug. The earlier staged-code success does not establish that the
+running bot can assign categories. No duplicate imports or connectivity interruption were made
+for this close-out.
+
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
 full tool results.
 
 - [x] Mealie reports a supported 3.23+ version and the API key is absent from current-pod logs,
       health output, SQLite audits, session entries, and public configuration.
-- [ ] Scraper/imported, scraper/OpenAI, AI/imported, and AI/OpenAI disposable imports complete or
-      report the documented partial/indeterminate outcome.
+- [x] First-version import scope accepted: scraper/imported and AI/imported completed; OpenAI
+      reparsing succeeded on both existing recipes. Scraper/OpenAI and AI/OpenAI **at import**
+      were waived rather than tested or duplicated.
 - [x] Existing-recipe OpenAI reparsing preserves ordering, section references, and verification
       (one opt-in, audited live run with the updated code staged outside the running image).
 - [x] Text, category, tag, and ingredient searches resolve exact filters and reject ambiguity
       (live positive and missing-filter checks; deterministic ambiguous-name preflight tests).
-- [ ] Category/tag list, create, rename, assignment, replacement, and explicit clear succeed;
-      deletion and out-of-scope tools are absent. The corrected path passed staged live checks,
-      but the running image has not been updated with the category-assignment fix.
-- [ ] A temporary Mealie outage degrades only Mealie and recovery works without restarting Klaus.
+- [x] Category/tag list, create, rename, assignment, replacement, and explicit clear passed with
+      staged corrected code; deletion and out-of-scope tools are absent. **The running image still
+      needs the fix** before claiming deployed category-assignment success.
+- [x] The operator waived a temporary Mealie outage test; outage recovery in the live bot remains
+      unverified. Restarts are not equivalent to a Mealie connectivity outage.
