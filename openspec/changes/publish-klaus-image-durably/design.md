@@ -20,7 +20,7 @@ See `proposal.md` for the release problem and `specs/image-publishing/spec.md` f
 
 1. **Use one GitHub Actions workflow on pull requests targeting `main` and pushes to `main`.** A quality job installs the pinned Node/npm toolchain, runs `npm ci` and `npm run check`, and grants only repository read access. A dependent container job builds the Dockerfile's `verification` target, which runs the existing container smoke test. A publish job depends on both gates and runs only for a push to `main`. GitHub job dependencies make any failure block publication. Separate, independently triggered workflows were rejected because their success is harder to tie to the exact published revision.
 
-2. **Build and push only the Dockerfile's `final` target.** Use Buildx and the existing Dockerfile for both verification and publication. The publish job tags `ghcr.io/<repository-owner>/klaus-agent` with the full commit SHA and reports the registry digest in the job summary. Deployments use `image@sha256:...`; the commit tag is for discovery, not a claim of immutability. The target node architecture must be checked before selecting the build platform, and the published digest must be verified on that architecture. A mutable `latest` deployment reference was rejected because it cannot identify the exact rollback image.
+2. **Build and push only the Dockerfile's `final` target for `linux/amd64`.** Use Buildx and the existing Dockerfile for both verification and publication. The publish job tags `ghcr.io/<repository-owner>/klaus-agent` with the full commit SHA and reports the registry digest in the job summary. Deployments use `image@sha256:...`; the commit tag is for discovery, not a claim of immutability. Confirm the target k3s node is amd64 and verify the published digest there before rollout. A mutable `latest` deployment reference was rejected because it cannot identify the exact rollback image.
 
 3. **Use GitHub's repository-scoped `GITHUB_TOKEN` only in the publish job.** That job receives `contents: read` and `packages: write`, logs in to `ghcr.io`, and associates the image with the source repository. The pull request jobs have no package write permission. Pin third-party actions to reviewed commit SHAs. A personal access token was rejected because it creates a separately managed publishing secret without a demonstrated need.
 
@@ -31,7 +31,7 @@ See `proposal.md` for the release problem and `specs/image-publishing/spec.md` f
 ## Risks / Trade-offs
 
 - **Package stays private after first push** -> Anonymous pulls fail; verify public visibility and a fresh unauthenticated pull before rollout.
-- **The image platform differs from a k3s node** -> Confirm node architecture and test a fresh pull on the target node before updating the live deployment.
+- **The amd64-only image does not match a k3s node** -> Confirm node architecture is amd64 and test a fresh pull on the target node before updating the live deployment.
 - **A commit tag is moved or deleted** -> Deploy and roll back by retained registry digest, not by tag; record digests in the release procedure.
 - **A successful CI run does not guarantee live integrations work** -> Keep the documented readiness, Home Assistant, Kaneo, and restart checks in the manual rollout.
 - **The current ttl.sh image expires** -> Publish and verify a durable baseline before cutover; record a restorable digest and data backup for rollback.

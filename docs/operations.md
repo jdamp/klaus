@@ -49,7 +49,7 @@ repopulates an overview that a participant cleared.
 
 For container releases, take the exact `ghcr.io/jdamp/klaus-agent@sha256:...` reference from the
 successful `main` workflow run. Confirm that GHCR serves it publicly and that the target k3s node
-can pull it before changing `deploy/k3s/klaus-agent.yaml`. Record both the new and previous durable
+is `amd64` and can pull it before changing `deploy/k3s/klaus-agent.yaml`. Record both the new and previous durable
 digests with the matching configuration revision and data and Pi authentication backups. Image
 pulls from this public package do not require a registry Secret. If the previous image is still on
 ttl.sh, its 24-hour expiry means it is not a durable rollback target.
