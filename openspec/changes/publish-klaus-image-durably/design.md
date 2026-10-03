@@ -26,7 +26,7 @@ See `proposal.md` for the release problem and `specs/image-publishing/spec.md` f
 
 4. **Treat public visibility as a release prerequisite.** After the first push, set the GHCR package public in GitHub and verify an unauthenticated pull by digest before changing the manifest. The k3s manifest does not need `imagePullSecrets`. GHCR's initial private state means the first successful workflow run alone does not finish the release.
 
-5. **Keep deployment deliberate.** Update the checked-in manifest to the verified digest and use the existing `klaus` namespace and `Recreate` rollout procedure. Document the source commit, digest, readiness and integration results, and previous digest in the release record. Automatic deployment was rejected because the repository's staged checks include live Telegram and MCP behavior that the GitHub runner cannot validate.
+5. **Keep deployment deliberate.** Update the checked-in manifest to the verified digest and use the existing `klaus` namespace and `Recreate` rollout procedure. Document the source commit, digest, readiness and integration results, and previous digest in the release record. For this development cutover, the operator explicitly waived a new SQLite and Pi authentication backup; record the waiver and the absence of a previous durable image. Automatic deployment was rejected because the repository's staged checks include live Telegram and MCP behavior that the GitHub runner cannot validate.
 
 ## Risks / Trade-offs
 
@@ -34,13 +34,13 @@ See `proposal.md` for the release problem and `specs/image-publishing/spec.md` f
 - **The amd64-only image does not match a k3s node** -> Confirm node architecture is amd64 and test a fresh pull on the target node before updating the live deployment.
 - **A commit tag is moved or deleted** -> Deploy and roll back by retained registry digest, not by tag; record digests in the release procedure.
 - **A successful CI run does not guarantee live integrations work** -> Keep the documented readiness, Home Assistant, Kaneo, and restart checks in the manual rollout.
-- **The current ttl.sh image expires** -> Publish and verify a durable baseline before cutover; record a restorable digest and data backup for rollback.
+- **The previous ttl.sh image expires** -> The first development cutover has no reliable prior image to restore. The operator waived a new data backup, so record that rollback to the prior state is unavailable. Subsequent releases should record a durable previous digest and compatible data backup when rollback is required.
 
 ## Migration Plan
 
 1. Add the workflow and confirm pull request runs execute both gates without publishing.
 2. Merge to `main`, confirm the gates pass, and record the GHCR digest from the publish job.
 3. Set the package public, verify an unauthenticated pull by digest, and confirm the image runs on the k3s node architecture.
-4. Back up persistent state, update the manifest to the digest, then roll out with `Recreate` in the existing `klaus` namespace.
+4. For this development cutover, record the operator's backup waiver, update the manifest to the digest, and roll out with `Recreate` in the existing `klaus` namespace. Back up persistent state before later releases that require data rollback.
 5. Verify fresh pull, readiness, Home Assistant and Kaneo discovery, and restart continuity; record the digest and rollback instructions.
-6. To roll back, restore the previously recorded durable digest and compatible configuration and data backup, using the same `Recreate` rollout.
+6. For a later release with a recorded prior digest and compatible backup, restore those using the same `Recreate` rollout. The first development cutover has no prior durable image or new backup to restore.

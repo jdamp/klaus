@@ -55,15 +55,17 @@ For later releases, take the exact `ghcr.io/jdamp/klaus-agent@sha256:...` refere
 successful `main` workflow run. Confirm that GHCR serves it publicly and that the target k3s node
 is `amd64` and can pull it before applying `deploy/k3s/klaus-agent.yaml`. Record both the new and
 previous durable digests with the matching configuration revision and data and Pi authentication
-backups. Image pulls from this public package do not require a registry Secret. The first cutover
-has no previous durable digest: the existing ttl.sh image has a 24-hour expiry and is not a durable
-rollback target.
+backups, or an explicit development backup waiver. Image pulls from this public package do not
+require a registry Secret. The [first cutover](releases/2026-10-03-ghcr-cutover.md) was a
+development rollout with an operator-approved backup waiver and no previous durable digest: the
+ttl.sh image has a 24-hour expiry and is not a durable rollback target.
 
 1. Record the current image digest and configuration revision.
 2. Run the quality and migration suites for the target version.
-3. Back up SQLite and Pi authentication state independently, with filesystem permissions
-   preserved. The Pi 1.0 migration retains stored 0.85 session entries, but this backup is the
-   rollback point for both conversation and provider state.
+3. For a release requiring data rollback, back up SQLite and Pi authentication state independently,
+   with filesystem permissions preserved. The Pi 1.0 migration retains stored 0.85 session entries,
+   but a backup is the rollback point for both conversation and provider state. The first GHCR
+   development cutover deliberately skipped this step at the operator's request.
 4. Stop the existing single replica.
 5. Start the new image against the existing volumes.
 6. Confirm the schema version, readiness, session continuity, one authorized conversation, and
@@ -86,6 +88,9 @@ If the previous image supports the current schema, stop the new pod and redeploy
 recorded public GHCR digest against the same volumes. Do not use a commit tag for rollback: tags
 can be moved, while the recorded digest selects the exact prior image. Use the same single-replica
 `Recreate` strategy so only one Telegram poller runs.
+
+The first GHCR development cutover cannot use this procedure because it has no previously recorded
+durable image. It also has no new data or Pi authentication backup to restore to the prior state.
 
 If a migration is not backward-compatible:
 

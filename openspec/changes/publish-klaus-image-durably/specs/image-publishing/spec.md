@@ -36,3 +36,7 @@ The checked-in k3s deployment SHALL reference a published GHCR digest instead of
 #### Scenario: Operator rolls back
 - **WHEN** the operator restores a previously recorded digest
 - **THEN** the deployment pulls the exact previous image without relying on a mutable tag or an expiring registry
+
+#### Scenario: First development cutover has no prior durable image
+- **WHEN** the first release replaces an expiring image and the operator waives a new data backup
+- **THEN** the release record states that rollback to the prior image and data state is unavailable

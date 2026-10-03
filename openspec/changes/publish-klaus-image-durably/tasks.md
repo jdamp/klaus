@@ -14,5 +14,5 @@
 
 ## 3. Rollout and release evidence
 
-- [ ] 3.1 Back up persistent data, roll out the digest to the existing `klaus` namespace, and verify a fresh pull, readiness, Home Assistant and Kaneo MCP discovery, and restart continuity; record the source commit, digest, time, and results.
-- [ ] 3.2 Record the previous durable digest and demonstrate the documented rollback path, or explicitly record why the first cutover lacks a previous durable image; verify the release record identifies a compatible configuration and data backup.
+- [x] 3.1 Roll out the digest to the existing `klaus` namespace for development with the operator's explicit backup waiver, and verify a fresh pull, readiness, Home Assistant and Kaneo MCP discovery, and restart continuity; record the source commit, digest, time, and results.
+- [x] 3.2 Record the previous durable digest and demonstrate the documented rollback path, or explicitly record why the first cutover lacks a previous durable image; verify the release record identifies the configuration revision and development backup waiver.

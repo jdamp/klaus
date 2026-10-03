@@ -22,10 +22,12 @@ target k3s node is `amd64` and make a fresh pull on that node before applying th
 public image needs no Kubernetes registry pull Secret. The workflow uses its repository
 `GITHUB_TOKEN` to push; the cluster and this repository need no GHCR credential.
 
-For each release, record the source commit, published digest, previous durable digest, configuration
-revision, data and Pi authentication backup locations, rollout time, and verification results. The
-first cutover from ttl.sh may have no previous durable digest; do not treat the expiring ttl.sh
-reference as a reliable rollback image. Preserve the pre-upgrade data and configuration backups.
+The [first GHCR cutover record](releases/2026-10-03-ghcr-cutover.md) documents the live rollout and
+the operator's choice to skip a new SQLite and Pi authentication backup because this is still a
+development deployment. There is no previous durable digest or new backup for rollback to the
+prior state. For later releases, record the source commit, published digest, previous durable
+digest, configuration revision, backup locations or explicit waiver, rollout time, and verification
+results. Do not treat the expiring ttl.sh reference as a reliable rollback image.
 
 ## k3s deployment
 
@@ -147,10 +149,11 @@ indeterminate audit outcome, inspect the target state manually before attempting
 
 ## Rollout and replacement
 
-Apply Secrets and ConfigMap changes before changing the image. Back up SQLite as described in
-`docs/operations.md`, then update the pinned image reference. Wait for the old pod to terminate
-before the replacement becomes active; `Recreate` enforces this at Deployment level. Confirm
-readiness and repeat the authorization, one read-only MCP call, and one harmless action checks.
+Apply Secrets and ConfigMap changes before changing the image. For a later release requiring data
+rollback, back up SQLite and Pi authentication state as described in `docs/operations.md` before
+updating the pinned image reference. Wait for the old pod to terminate before the replacement
+becomes active; `Recreate` enforces this at Deployment level. Confirm readiness and repeat the
+authorization, one read-only MCP call, and one harmless action checks.
 
 Rollback must also use `Recreate`. If the previous image cannot read the upgraded schema, restore
 the pre-upgrade backup to a fresh data volume rather than attempting an in-place downgrade. Remove
