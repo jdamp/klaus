@@ -14,11 +14,13 @@ from [main run 37104489811](https://github.com/jdamp/klaus/actions/runs/37104489
 checked-in deployment pins
 `ghcr.io/jdamp/klaus-agent@sha256:6a11b2cdaa0e506c36b287421f5493deed1a67450c60b251c085bd1fb059738d`.
 All three jobs passed, and an anonymous pull of its amd64 image and all ten layers succeeded on
-2026-10-03. The package is public. For each later release, verify an unauthenticated pull of the
-reported digest before updating the manifest. Confirm the target k3s node is `amd64` and make a
-fresh pull on that node before applying the deployment. A public image needs no Kubernetes registry
-pull Secret. The workflow uses its repository `GITHUB_TOKEN` to push; the cluster and this
-repository need no GHCR credential.
+2026-10-03. A temporary pod on the current `klaus` node, `proxmox-1-worker-1`, freshly pulled the
+same digest with `imagePullPolicy: Always`, ran `node -p process.arch` successfully (`x64`), and
+had no `imagePullSecrets`; it was then removed. The package is public. For each later release,
+verify an unauthenticated pull of the reported digest before updating the manifest. Confirm the
+target k3s node is `amd64` and make a fresh pull on that node before applying the deployment. A
+public image needs no Kubernetes registry pull Secret. The workflow uses its repository
+`GITHUB_TOKEN` to push; the cluster and this repository need no GHCR credential.
 
 For each release, record the source commit, published digest, previous durable digest, configuration
 revision, data and Pi authentication backup locations, rollout time, and verification results. The

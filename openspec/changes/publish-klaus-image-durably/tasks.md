@@ -7,8 +7,8 @@
 
 ## 2. Public registry and deployment
 
-- [ ] 2.1 Confirm the k3s node architecture is amd64 and verify the published amd64-only digest identifies an image the target node can pull and run.
-- [ ] 2.2 Set the GHCR package public after its first push and verify a fresh unauthenticated pull by digest, including from the `klaus` cluster; verify no registry image pull Secret is needed.
+- [x] 2.1 Confirm the k3s node architecture is amd64 and verify the published amd64-only digest identifies an image the target node can pull and run.
+- [x] 2.2 Set the GHCR package public after its first push and verify a fresh unauthenticated pull by digest, including from the `klaus` cluster; verify no registry image pull Secret is needed.
 - [x] 2.3 Update the checked-in k3s manifest from ttl.sh to the verified GHCR digest and keep the existing single-replica `Recreate` behavior; verify deployment tests and manifest inspection pass.
 - [x] 2.4 Update deployment and operations docs with the release digest, public pull check, rollout checks, and rollback to a previously recorded durable digest; verify the instructions match the manifest and require no registry credential.
 
