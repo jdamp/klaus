@@ -114,9 +114,33 @@ a clean build from `a90b912` was deployed as the digest-pinned, **24-hour tempor
 `ttl.sh/klaus-mealie-optin-a90b912-20260929205331:24h@sha256:b596319016082e079596b5f6bda517ec4b78cf3d9677860744dd72feaf9c474e`.
 Klaus readiness and Mealie capability health were both healthy, both import and reparse tools
 exposed the opt-in flag, and a structured-food filter found the saved recipe. This is not a
-durable registry publication and expires unless replaced. The AI/OpenAI import combination,
-Telegram delivery, ambiguous-filter checks, organizer mutations, and outage recovery remain
-outstanding.
+durable registry publication. On 2026-10-03 it was replaced by the public, digest-pinned GHCR
+image documented in `docs/releases/2026-10-03-ghcr-cutover.md`; one replica was ready with healthy
+Mealie capabilities. The AI/OpenAI import combination, Telegram delivery, ambiguous-filter checks,
+organizer mutations, and outage recovery remain outstanding.
+
+Follow-up acceptance (2026-10-03 UTC): the accepted GHCR rollout reported one ready Klaus replica
+and healthy Mealie capabilities. Two uniquely named disposable organizers (one category and one
+tag) were created, listed, and renamed with read-back. The first assignment through the deployed
+tool partially applied the tag but ignored the category; an independent read-back showed the
+recipe still had 12 ingredients and six instructions. The cause was the wrong recipe update field
+(`categories` instead of Mealie's `recipeCategory`).
+
+Updated code passed the full test suite (143 tests) and was staged **only** for audited one-off
+tool calls. A single corrected assignment applied both organizers; explicit clearing of each type
+preserved the omitted type, all ingredient references, and recipe instructions. Both organizer
+assignments were restored to their original empty state; the non-destructive disposable organizer
+records remain. Text, exact category, tag, and food searches returned bounded pages with public
+links; a missing filter was rejected. Regression tests reject ambiguous food/category names
+before recipe search. The staged fix was removed: the running GHCR image **still contains the
+category assignment bug** until a new image is reviewed and deployed.
+
+A separate, single opt-in OpenAI reparse of the already AI-imported disposable recipe succeeded on
+the deployed tool without creating another recipe: 11 usable ingredients remained, ten gained
+food IDs and seven gained unit IDs. Ordered reference IDs, section titles, instructions, and
+existing tags were preserved; an independent read confirmed the result and its public page
+returned HTTP 200. This verifies the parser after an AI import, **not** the AI/OpenAI mode within
+a new import. The current-pod log, SQLite, and health scans again found no Mealie key.
 
 When Mealie is enabled, record only privacy-safe pass/fail evidence here. Do not commit recipe names,
 source URLs, ingredient text, organizer names, household identifiers, Telegram content, API keys, or
@@ -128,7 +152,9 @@ full tool results.
       report the documented partial/indeterminate outcome.
 - [x] Existing-recipe OpenAI reparsing preserves ordering, section references, and verification
       (one opt-in, audited live run with the updated code staged outside the running image).
-- [ ] Text, category, tag, and ingredient searches resolve exact filters and reject ambiguity.
+- [x] Text, category, tag, and ingredient searches resolve exact filters and reject ambiguity
+      (live positive and missing-filter checks; deterministic ambiguous-name preflight tests).
 - [ ] Category/tag list, create, rename, assignment, replacement, and explicit clear succeed;
-      deletion and out-of-scope tools are absent.
+      deletion and out-of-scope tools are absent. The corrected path passed staged live checks,
+      but the running image has not been updated with the category-assignment fix.
 - [ ] A temporary Mealie outage degrades only Mealie and recovery works without restarting Klaus.

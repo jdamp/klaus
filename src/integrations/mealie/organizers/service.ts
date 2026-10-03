@@ -61,11 +61,11 @@ export class OrganizerService {
     const resolvedTags =
       tags === undefined ? undefined : await this.resolveAll("tag", tags, signal);
     const payload: Record<string, unknown> = { ...raw };
-    if (resolvedCategories !== undefined) payload.categories = resolvedCategories;
+    if (resolvedCategories !== undefined) payload.recipeCategory = resolvedCategories;
     if (resolvedTags !== undefined) payload.tags = resolvedTags;
     await this.client.updateRecipe(slug, payload, signal);
     const verified = asRecord(await this.client.getRecipe(slug, signal));
-    const actualCategories = organizerList(verified.categories);
+    const actualCategories = organizerList(verified.recipeCategory);
     const actualTags = organizerList(verified.tags);
     if (resolvedCategories !== undefined && !sameIds(resolvedCategories, actualCategories)) {
       throw new Error("Mealie category assignment verification failed");
