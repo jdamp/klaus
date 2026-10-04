@@ -45,6 +45,18 @@ model:
   contextTokens: 64000
   retryLimit: 2
 
+# Optional native Paperless integration. Uses the official API v10; omit to disable.
+# paperless:
+#   baseUrl: https://paperless.example.invalid
+#   publicUrl: https://paperless.example.invalid # optional user-accessible application URL
+#   apiTokenFile: .local/secrets/paperless-api-token
+#   requestTimeoutMs: 30000
+#   uploadTimeoutMs: 60000
+#   downloadTimeoutMs: 15000
+#   maxResponseBytes: 2097152
+#   maxResultBytes: 65536
+#   maxUploadBytes: 10485760
+
 # Optional native Mealie integration. The API key is read from a mounted secret file.
 # mealie:
 #   baseUrl: https://mealie.example.invalid

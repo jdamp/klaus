@@ -93,6 +93,50 @@ const stdioMcpServerSchema = z
 
 const mcpServerSchema = z.union([httpMcpServerSchema, stdioMcpServerSchema]);
 
+const paperlessSchema = z
+  .object({
+    baseUrl: z
+      .url()
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "must use HTTP(S)")
+      .refine((value) => {
+        const url = new URL(value);
+        return !url.username && !url.password && !url.search && !url.hash;
+      }, "must not contain credentials, a query, or a fragment")
+      .transform((value) => value.replace(/\/$/, "")),
+    publicUrl: z
+      .url()
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "must use HTTP(S)")
+      .refine((value) => {
+        const url = new URL(value);
+        return !url.username && !url.password && !url.search && !url.hash;
+      }, "must not contain credentials, a query, or a fragment")
+      .transform((value) => value.replace(/\/$/, ""))
+      .optional(),
+    apiTokenFile: pathValue,
+    requestTimeoutMs: z.number().int().positive().max(120_000).default(30_000),
+    uploadTimeoutMs: z.number().int().positive().max(180_000).default(60_000),
+    downloadTimeoutMs: z.number().int().positive().max(120_000).default(15_000),
+    maxResponseBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(16 * 1024 * 1024)
+      .default(2 * 1024 * 1024),
+    maxResultBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(1024 * 1024)
+      .default(64 * 1024),
+    maxUploadBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(20 * 1024 * 1024)
+      .default(10 * 1024 * 1024),
+  })
+  .strict();
+
 const mealieSchema = z
   .object({
     baseUrl: z
@@ -199,6 +243,7 @@ const configSchema = z
     }),
     mcp: z.array(mcpServerSchema).default([]),
     mealie: mealieSchema.optional(),
+    paperless: paperlessSchema.optional(),
     skills: z.object({
       paths: z.array(pathValue).default([]),
     }),
@@ -264,6 +309,7 @@ export function assertAbsoluteConfiguredPaths(config: AppConfig): void {
     config.data.directory,
     ...config.skills.paths,
     ...(config.mealie ? [config.mealie.apiKeyFile] : []),
+    ...(config.paperless ? [config.paperless.apiTokenFile] : []),
     ...config.mcp.flatMap((server) =>
       "url" in server
         ? server.tokenFile
@@ -283,6 +329,9 @@ export function publicConfig(config: AppConfig): unknown {
     telegram: { ...config.telegram, tokenFile: "[secret-file]" },
     model: { ...config.model, authPath: "[protected-auth-path]" },
     mealie: config.mealie ? { ...config.mealie, apiKeyFile: "[secret-file]" } : undefined,
+    paperless: config.paperless
+      ? { ...config.paperless, apiTokenFile: "[secret-file]" }
+      : undefined,
     mcp: config.mcp.map((server) =>
       "url" in server
         ? {

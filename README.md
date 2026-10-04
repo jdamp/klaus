@@ -260,6 +260,43 @@ The native surface includes bounded recipe search/retrieval, URL import with exp
 
 Create a dedicated Mealie automation key outside the repository and mount it read-only. Klaus sends it only as a bearer header, rejects redirects, redacts it from audits and diagnostics, and bounds remote responses and model-visible results. Mealie's own HTTP allow/disallow policy remains authoritative for URLs that Mealie fetches. Validate both import paths and both ingredient modes against disposable recipes before household rollout; remove the configuration and secret mount to roll back.
 
+## Native Paperless-ngx document integration
+
+Paperless is optional and remains disabled when its configuration is omitted. It uses Klaus's own
+bounded native integration with the official API v10; it does not require a third-party Paperless
+MCP server. Configure a dedicated least-privilege Paperless API token in a mounted secret file and
+keep the URL and secret path free of credentials:
+
+```yaml
+paperless:
+  baseUrl: https://paperless.example.invalid # include an application subpath if deployed beneath one
+  publicUrl: https://docs.example.invalid/paperless # optional user-accessible application URL
+  apiTokenFile: /run/secrets/paperless/api-token
+  requestTimeoutMs: 30000
+  uploadTimeoutMs: 60000
+  downloadTimeoutMs: 15000
+  maxResponseBytes: 2097152
+  maxResultBytes: 65536
+  maxUploadBytes: 10485760
+```
+
+The integration checks API v10 compatibility and fails closed rather than falling back to older API
+contracts. The same Paperless account is used in authorized private chats and the allowlisted
+household group; existing sender/chat authorization and group mention/reply rules still apply.
+Review Paperless object permissions and default workflows for the automation account separately.
+Documents uploaded by Klaus may not be visible to household UI accounts unless Paperless permissions
+or workflows provide that visibility. Tokens are sent only as `Authorization: Token` headers.
+
+Telegram uploads are limited to validated, bounded current-message PDF, JPEG, or PNG attachments
+and require an explicit upload request; PDF bytes are not sent to the model. Telegram images retain
+their existing visual-input behavior, including WEBP, which is not in the initial upload format set.
+Paperless acknowledges ingestion asynchronously: an accepted upload is not yet a consumed document,
+and a durable receipt can be checked for processing status. Uncertain submissions are never
+automatically retried. OCR requested through Klaus is sent to the configured model provider and may
+be present in its conversation session and tool audit retention; it is not automatically copied to
+shared memory. Inspect the installed API version, permissions, and workflows against disposable
+staging documents before enabling this integration.
+
 ## Container
 
 Build and run the same application artifact locally:

@@ -14,7 +14,9 @@ import { KeyedQueue } from "../dispatch/keyed-queue.js";
 import { HealthServer } from "../health/server.js";
 import { PiMcpConnectionRegistry, PiMcpHealthRegistry } from "../mcp/pi-adapter.js";
 import { AgentToolCatalog } from "../capabilities/catalog.js";
+import type { CapabilityProvider } from "../capabilities/types.js";
 import { MealieProvider } from "../integrations/mealie/provider.js";
+import { PaperlessProvider } from "../integrations/paperless/provider.js";
 import { TurnContextRegistry } from "../agent/turn-context.js";
 import { CodexImageGenerator } from "../image-generation/codex.js";
 import { ImageGenerationProvider } from "../image-generation/provider.js";
@@ -66,6 +68,15 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
     }
   }
   redactor.add(mealieKey);
+  let paperlessToken: string | undefined;
+  if (config.paperless) {
+    try {
+      paperlessToken = await readSecret(config.paperless.apiTokenFile);
+    } catch {
+      throw new Error("Unable to read configured Paperless API token file");
+    }
+  }
+  redactor.add(paperlessToken);
   const logger = new Logger(redactor);
 
   const database = new AppDatabase(join(config.data.directory, "klaus.sqlite"));
@@ -86,9 +97,22 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   const mcpHealth = new PiMcpHealthRegistry();
   const mcpConnections = new PiMcpConnectionRegistry();
   const memory = new MemoryProvider(memoryRepository, memoryContexts, audits, redactor);
-  const providers = [memory] as Array<MemoryProvider | MealieProvider | ImageGenerationProvider>;
+  const providers: CapabilityProvider[] = [memory];
   if (config.mealie && mealieKey) {
     providers.push(new MealieProvider(config.mealie, mealieKey, audits, redactor));
+  }
+  if (config.paperless && paperlessToken) {
+    providers.push(
+      new PaperlessProvider(
+        config.paperless,
+        paperlessToken,
+        audits,
+        redactor,
+        turnContexts,
+        new Set(config.telegram.allowedChats),
+        new Set(config.telegram.allowedUsers),
+      ),
+    );
   }
   if (config.imageGeneration) {
     const generator = new CodexImageGenerator(runtime, config.imageGeneration);

@@ -42,7 +42,67 @@ describe("configuration and secrets", () => {
     expect(config.mcp[0]?.id).toBe("home");
     expect(config.mcp[0]?.tools).toBeUndefined();
     expect(config.mcp[0]?.exposure).toBe("deferred");
+    expect(config.paperless).toBeUndefined();
     expect(() => parseConfig("telegram: {}")).toThrow();
+  });
+
+  it("loads optional Paperless settings with bounded defaults and redacts the token path", () => {
+    const source = validYaml("/tmp/klaus").replace(
+      "data:",
+      "paperless:\n  baseUrl: https://paperless.example.invalid/paperless/\n  publicUrl: https://docs.example.invalid/archive/\n  apiTokenFile: /tmp/klaus/paperless-token\ndata:",
+    );
+    const config = parseConfig(source);
+    expect(config.paperless).toMatchObject({
+      baseUrl: "https://paperless.example.invalid/paperless",
+      publicUrl: "https://docs.example.invalid/archive",
+      apiTokenFile: "/tmp/klaus/paperless-token",
+      requestTimeoutMs: 30_000,
+      uploadTimeoutMs: 60_000,
+      downloadTimeoutMs: 15_000,
+      maxResponseBytes: 2 * 1024 * 1024,
+      maxResultBytes: 64 * 1024,
+      maxUploadBytes: 10 * 1024 * 1024,
+    });
+    expect(JSON.stringify(publicConfig(config))).not.toContain("paperless-token");
+    expect(() => assertAbsoluteConfiguredPaths(config)).not.toThrow();
+  });
+
+  it("rejects unsafe Paperless URLs and out-of-range limits", () => {
+    const paperlessYaml = (values: string) =>
+      validYaml("/tmp/klaus").replace("data:", `paperless:\n${values}\ndata:`);
+    for (const url of [
+      "https://user:pass@paperless.example.invalid",
+      "https://paperless.example.invalid/?token=x",
+      "https://paperless.example.invalid/#fragment",
+      "ftp://paperless.example.invalid",
+    ]) {
+      expect(() =>
+        parseConfig(paperlessYaml(`  baseUrl: ${url}\n  apiTokenFile: /tmp/key`)),
+      ).toThrow();
+    }
+    expect(() =>
+      parseConfig(
+        paperlessYaml(
+          "  baseUrl: https://paperless.example.invalid\n  publicUrl: https://user:pass@docs.example.invalid\n  apiTokenFile: /tmp/key",
+        ),
+      ),
+    ).toThrow();
+    for (const [key, value] of [
+      ["requestTimeoutMs", "0"],
+      ["uploadTimeoutMs", "180001"],
+      ["downloadTimeoutMs", "120001"],
+      ["maxResponseBytes", "0"],
+      ["maxResultBytes", "1048577"],
+      ["maxUploadBytes", "20971521"],
+    ]) {
+      expect(() =>
+        parseConfig(
+          paperlessYaml(
+            `  baseUrl: https://paperless.example.invalid\n  apiTokenFile: /tmp/key\n  ${key}: ${value}`,
+          ),
+        ),
+      ).toThrow();
+    }
   });
 
   it("loads bounded optional image-generation settings without exposing provider details", () => {
