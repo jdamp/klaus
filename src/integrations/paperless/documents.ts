@@ -108,6 +108,20 @@ export class PaperlessDocumentService {
     };
   }
 
+  async verifyReadable(
+    id: number,
+    signal?: AbortSignal,
+  ): Promise<Pick<DocumentSummary, "id" | "title">> {
+    positiveId(id, "document id");
+    const response = await this.client.getDocument(id, undefined, signal);
+    if (response.apiVersion !== "10" || !response.serverVersion) {
+      throw new Error("Paperless document API v10 compatibility is unverified");
+    }
+    const document = toSummary(response.body);
+    if (document.id !== id) throw new Error("Paperless document identity did not match");
+    return { id, title: document.title };
+  }
+
   async update(input: DocumentUpdateInput, signal?: AbortSignal): Promise<DocumentSummary> {
     positiveId(input.id, "document id");
     const patch: Record<string, unknown> = {};

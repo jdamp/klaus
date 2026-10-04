@@ -288,8 +288,8 @@ Documents uploaded by Klaus may not be visible to household UI accounts unless P
 or workflows provide that visibility. Tokens are sent only as `Authorization: Token` headers.
 
 The native tools provide bounded `paperless_search_documents` and `paperless_get_document`,
-`paperless_update_document`, and explicit list/create/rename operations for tags, correspondents, and
-document types. Search accepts one of Paperless's current `text`, `title_search`, or advanced `query`
+`paperless_update_document`, explicit list/create/rename operations for tags, correspondents, and
+document types, plus `paperless_upload_document` and `paperless_get_upload_status`. Search accepts one of Paperless's current `text`, `title_search`, or advanced `query`
 modes, plus date and exact organizer filters; tag filters explicitly use `any` or `all` matching.
 Name references must match exactly and ambiguous names are rejected. Metadata updates change only
 supplied fields; `tags: []` clears tags, and a null correspondent or document type clears that
@@ -316,14 +316,18 @@ A bare PDF is admitted only to ask what you want done; it is not upload consent.
 archive it after that clarification, resend it as a new message with an explicit upload caption.
 Klaus can access only the attachment attached to the currently admitted Telegram turn. Conversational
 intent guidance does not grant additional authority: tool schemas, trusted chat/sender checks,
-content-signature validation, and upload receipts enforce the actual limits. Telegram images retain
-their existing visual-input behavior, including WEBP, which is not in the initial upload format set.
-Paperless acknowledges ingestion asynchronously: an accepted upload is not yet a consumed document,
-and a durable receipt can be checked for processing status. Uncertain submissions are never
-automatically retried. OCR requested through Klaus is sent to the configured model provider and may
-be present in its conversation session and tool audit retention; it is not automatically copied to
-shared memory. Inspect the installed API version, permissions, and workflows against disposable
-staging documents before enabling this integration.
+content-signature validation, and upload receipts enforce the actual limits.
+
+An upload receipt means Paperless accepted a processing task, not that it consumed the document.
+Use `paperless_get_upload_status` with the returned receipt ID in the originating chat to check
+later; temporary task invisibility or lookup failures leave the saved receipt intact. Klaus does not
+poll in the background or send completion notifications. Paperless workflows may override supplied
+metadata or apply their own defaults, and documents created by the shared automation account may not
+be visible to household UI accounts until the operator configures Paperless visibility separately.
+Klaus never sends uploaded PDF bytes back to Telegram. A deliberately resent attachment is a new
+message and a separate upload request; uncertain receipts are never automatically replayed. Before
+enabling, verify the installed API version, permissions, and workflows against disposable staging
+documents.
 
 ## Container
 

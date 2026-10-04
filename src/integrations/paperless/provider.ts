@@ -10,6 +10,8 @@ import { PaperlessDocumentService } from "./documents.js";
 import { PaperlessOrganizerService } from "./organizers.js";
 import { paperlessTools } from "./tools.js";
 import type { PaperlessUploadReceiptRepository } from "./receipts.js";
+import { PaperlessUploadService } from "./uploads.js";
+import type { TelegramUploadFileLoader } from "../../telegram/upload-file.js";
 import {
   PaperlessClient,
   PaperlessHttpError,
@@ -39,6 +41,7 @@ export class PaperlessProvider implements CapabilityProvider {
     allowedUsers: ReadonlySet<string>,
     fetcher?: PaperlessFetch,
     receipts?: PaperlessUploadReceiptRepository,
+    uploadFileLoader?: TelegramUploadFileLoader,
   ) {
     redactor.add(token);
     this.#client = new PaperlessClient(config, token, fetcher);
@@ -56,9 +59,22 @@ export class PaperlessProvider implements CapabilityProvider {
     this.#allowedChats = allowedChats;
     this.#allowedUsers = allowedUsers;
     this.#receipts = receipts;
+    this.#uploadTimeoutMs = config.uploadTimeoutMs;
+    this.#uploads =
+      receipts && uploadFileLoader
+        ? new PaperlessUploadService(
+            this.#client,
+            this.#documents,
+            this.#organizers,
+            receipts,
+            uploadFileLoader,
+          )
+        : undefined;
   }
 
   #receipts: PaperlessUploadReceiptRepository | undefined;
+  #uploads: PaperlessUploadService | undefined;
+  #uploadTimeoutMs: number;
 
   async start(signal: AbortSignal): Promise<void> {
     this.#receipts?.markOrphanedSubmittingIndeterminate();
@@ -81,7 +97,11 @@ export class PaperlessProvider implements CapabilityProvider {
       executor: this.#executor,
       documents: this.#documents,
       organizers: this.#organizers,
-      guard: (activeSessionId, signal, callback) => this.#run(activeSessionId, signal, callback),
+      guard: (activeSessionId, signal, callback, checkHealth) =>
+        this.#run(activeSessionId, signal, callback, checkHealth),
+      trustedContext: (activeSessionId) => this.#requireTrustedContext(activeSessionId),
+      ...(this.#uploads ? { uploads: this.#uploads } : {}),
+      uploadTimeoutMs: this.#uploadTimeoutMs,
       auditContext: (activeSessionId) => {
         const updateId = this.#turnContexts.get(activeSessionId)?.updateId;
         return updateId ? { updateId } : {};
@@ -89,9 +109,14 @@ export class PaperlessProvider implements CapabilityProvider {
     });
   }
 
-  async #run<T>(sessionId: string, signal: AbortSignal, callback: () => Promise<T>): Promise<T> {
+  async #run<T>(
+    sessionId: string,
+    signal: AbortSignal,
+    callback: () => Promise<T>,
+    checkHealth = true,
+  ): Promise<T> {
     this.#requireTrustedContext(sessionId);
-    await this.#ensureAvailable(signal);
+    if (checkHealth) await this.#ensureAvailable(signal);
     return callback();
   }
 

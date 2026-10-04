@@ -114,9 +114,14 @@ export class PaperlessClient {
     return this.request("POST", "/api/documents/post_document/", undefined, signal, form);
   }
 
-  findTask(taskId: string, signal?: AbortSignal) {
-    if (!/^[a-f0-9-]{16,64}$/i.test(taskId)) throw new Error("Invalid Paperless task identity");
-    return this.json("GET", "/api/tasks/", { task_id: taskId, page: 1, page_size: 10 }, signal);
+  findTask(taskId: string, page = 1, signal?: AbortSignal) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(taskId)) {
+      throw new Error("Invalid Paperless task identity");
+    }
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10) {
+      throw new Error("Invalid Paperless task page");
+    }
+    return this.json("GET", "/api/tasks/", { task_id: taskId, page, page_size: 10 }, signal);
   }
 
   private async json(

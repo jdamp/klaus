@@ -44,6 +44,18 @@ data:
       authPath: /var/lib/klaus-agent-auth/auth.json
       contextTokens: 64000
       retryLimit: 2
+    # Optional native Paperless integration. Omit this block to keep Paperless disabled.
+    # Enable only after reviewing staging API compatibility, permissions, and workflows.
+    # paperless:
+    #   baseUrl: https://paperless.example.invalid
+    #   publicUrl: https://documents.example.invalid/paperless
+    #   apiTokenFile: /run/secrets/paperless/api-token
+    #   requestTimeoutMs: 30000
+    #   uploadTimeoutMs: 60000
+    #   downloadTimeoutMs: 15000
+    #   maxResponseBytes: 2097152
+    #   maxResultBytes: 65536
+    #   maxUploadBytes: 10485760
     # Optional native Mealie integration. Uncomment only after upgrading Mealie to 3.23+.
     # mealie:
     #   baseUrl: http://mealie-service.mealie.svc.cluster.local
@@ -196,6 +208,9 @@ spec:
             - name: mealie-api-key
               mountPath: /run/secrets/mealie
               readOnly: true
+            - name: paperless-api-token
+              mountPath: /run/secrets/paperless
+              readOnly: true
             - name: data
               mountPath: /var/lib/klaus-agent
             - name: auth
@@ -228,6 +243,13 @@ spec:
             items:
               - key: MEALIE_API_KEY
                 path: api-key
+        - name: paperless-api-token
+          secret:
+            secretName: paperless-api-token
+            optional: true
+            items:
+              - key: api-token
+                path: api-token
         - name: data
           persistentVolumeClaim:
             claimName: klaus-agent-data

@@ -19,6 +19,7 @@ export type PaperlessReceiptDetailCode =
   | "restart_before_task_id_recorded"
   | "submission_outcome_unknown"
   | "submission_rejected"
+  | "submission_not_dispatched"
   | "task_pending"
   | "task_started"
   | "task_consumed"
@@ -70,6 +71,7 @@ const DETAIL_CODES = new Set<PaperlessReceiptDetailCode>([
   "restart_before_task_id_recorded",
   "submission_outcome_unknown",
   "submission_rejected",
+  "submission_not_dispatched",
   "task_pending",
   "task_started",
   "task_consumed",
@@ -123,6 +125,18 @@ export class PaperlessUploadReceiptRepository {
     }
   }
 
+  findByIdentity(updateId: string, attachmentKey: string): PaperlessUploadReceipt | undefined {
+    const row = this.database.connection
+      .prepare(
+        `SELECT id,chat_id,update_id,message_id,sender_id,state,task_id,
+                document_ids_json,detail_code,created_at,updated_at
+         FROM paperless_upload_receipts
+         WHERE provider_id='paperless' AND update_id=? AND attachment_key=?`,
+      )
+      .get(updateId, attachmentKey) as ReceiptRow | undefined;
+    return row ? toReceipt(row) : undefined;
+  }
+
   findForChat(receiptId: string, chatId: string): PaperlessUploadReceipt | undefined {
     const row = this.database.connection
       .prepare(
@@ -159,20 +173,33 @@ export class PaperlessUploadReceiptRepository {
       PaperlessReceiptDetailCode,
       "submission_outcome_unknown" | "task_result_unverified"
     >,
+    taskId?: string,
+    documentIds?: readonly number[],
   ): PaperlessUploadReceipt {
+    if (
+      documentIds &&
+      (documentIds.length > 100 || documentIds.some((id) => !Number.isSafeInteger(id) || id < 1))
+    ) {
+      throw new Error("Invalid Paperless document references");
+    }
     this.updateState(
       receiptId,
-      ["submitting", "accepted", "pending", "started"],
+      ["submitting", "accepted", "pending", "started", "indeterminate"],
       "indeterminate",
       detailCode,
+      taskId,
+      documentIds,
     );
     const receipt = this.findById(receiptId);
     if (!receipt) throw new Error("Paperless upload receipt was not found");
     return receipt;
   }
 
-  markSubmissionFailed(receiptId: string): PaperlessUploadReceipt {
-    this.updateState(receiptId, ["submitting"], "submission_failed", "submission_rejected");
+  markSubmissionFailed(
+    receiptId: string,
+    detailCode: "submission_rejected" | "submission_not_dispatched" = "submission_rejected",
+  ): PaperlessUploadReceipt {
+    this.updateState(receiptId, ["submitting"], "submission_failed", detailCode);
     const receipt = this.findById(receiptId);
     if (!receipt) throw new Error("Paperless upload receipt was not found");
     return receipt;
@@ -190,18 +217,18 @@ export class PaperlessUploadReceiptRepository {
     >,
     documentIds: readonly number[] = [],
   ): PaperlessUploadReceipt {
-    const uniqueIds = [...new Set(documentIds)];
+    const uniqueIds = [...new Set(documentIds)].sort((left, right) => left - right);
     if (uniqueIds.length > 100 || uniqueIds.some((id) => !Number.isSafeInteger(id) || id < 1)) {
       throw new Error("Invalid Paperless document references");
     }
-    this.updateState(
-      receiptId,
-      ["accepted", "pending", "started", "consumed", "failed", "revoked"],
-      state,
-      detailCode,
-      undefined,
-      uniqueIds,
-    );
+    const allowedStates: Record<typeof state, readonly PaperlessReceiptState[]> = {
+      pending: ["accepted", "pending", "indeterminate"],
+      started: ["accepted", "pending", "started", "indeterminate"],
+      consumed: ["accepted", "pending", "started", "indeterminate", "consumed"],
+      failed: ["accepted", "pending", "started", "indeterminate", "failed"],
+      revoked: ["accepted", "pending", "started", "indeterminate", "revoked"],
+    };
+    this.updateState(receiptId, allowedStates[state], state, detailCode, undefined, uniqueIds);
     const receipt = this.findById(receiptId);
     if (!receipt) throw new Error("Paperless upload receipt was not found");
     return receipt;
@@ -216,6 +243,8 @@ export class PaperlessUploadReceiptRepository {
     documentIds?: readonly number[],
   ): void {
     if (!DETAIL_CODES.has(detailCode)) throw new Error("Invalid Paperless receipt detail code");
+    if (taskId !== undefined && !TASK_ID.test(taskId))
+      throw new Error("Invalid Paperless task identity");
     const placeholders = allowedStates.map(() => "?").join(",");
     const result = this.database.connection
       .prepare(

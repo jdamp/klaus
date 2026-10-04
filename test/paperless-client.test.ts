@@ -78,9 +78,15 @@ describe("Paperless API v10 client", () => {
       return json({ count: 0, next: "https://attacker.example/" });
     });
     await client.list("documents", { page: 1, page_size: 1 });
-    expect(urls).toHaveLength(1);
+    await client.findTask("f4c3b2a1-1234-4abc-9def-0123456789ab", 2);
+    expect(urls).toHaveLength(2);
     expect(urls[0]).toContain("/base/api/documents/");
+    expect(new URL(urls[1]!).searchParams.get("page")).toBe("2");
+    expect(urls[1]).toContain("/base/api/tasks/");
     expect(() => client.findTask("https://attacker.example")).toThrow("Invalid Paperless task");
+    expect(() => client.findTask("f4c3b2a1-1234-4abc-9def-0123456789ab", 11)).toThrow(
+      "Invalid Paperless task page",
+    );
   });
 
   it("cancels an oversized response stream and rejects invalid JSON", async () => {

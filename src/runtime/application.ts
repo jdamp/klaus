@@ -40,6 +40,7 @@ import { TelegramPoller } from "../telegram/poller.js";
 import { TelegramRouter } from "../telegram/router.js";
 import { TelegramTypingActivity } from "../telegram/typing-activity.js";
 import { TelegramVisualInputLoader } from "../telegram/visual-input.js";
+import { TelegramUploadFileLoader } from "../telegram/upload-file.js";
 import {
   CapabilityComponent,
   PersistenceComponent,
@@ -92,6 +93,14 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
 
   const audits = new ToolAuditRepository(database);
   const paperlessReceipts = new PaperlessUploadReceiptRepository(database);
+  const api = new TelegramHttpClient(telegramToken);
+  const paperlessUploadFileLoader = config.paperless
+    ? new TelegramUploadFileLoader(
+        api,
+        config.paperless.maxUploadBytes,
+        config.paperless.downloadTimeoutMs,
+      )
+    : undefined;
   const outbox = new OutboxRepository(database, config.imageGeneration?.maxImageBytes);
   const turnContexts = new TurnContextRegistry();
   const memoryRepository = new MemoryRepository(database, config.memory);
@@ -115,6 +124,7 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
         new Set(config.telegram.allowedUsers),
         undefined,
         paperlessReceipts,
+        paperlessUploadFileLoader,
       ),
     );
   }
@@ -134,7 +144,6 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   }
   const catalog = new AgentToolCatalog(providers);
   const capabilities = new CapabilityComponent(catalog);
-  const api = new TelegramHttpClient(telegramToken);
   const visualInput = new TelegramVisualInputLoader(
     api,
     config.telegram.visualInput.maxBytes,

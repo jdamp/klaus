@@ -58,6 +58,7 @@ describe("packaging and deployment examples", () => {
     const configMap = objects.find((object) => object.kind === "ConfigMap");
     expect(configMap?.data?.["config.yaml"]).toBeDefined();
     const config = parseConfig(configMap!.data!["config.yaml"]!);
+    expect(config.paperless).toBeUndefined();
     expect(config.mcp[1]).toMatchObject({
       id: "kaneo",
       command: "node",
@@ -124,10 +125,19 @@ describe("packaging and deployment examples", () => {
         expect.objectContaining({ name: "telegram-token", readOnly: true }),
         expect.objectContaining({ name: "home-mcp-token", readOnly: true }),
         expect.objectContaining({ name: "kaneo-api-key", readOnly: true }),
+        expect.objectContaining({ name: "paperless-api-token", readOnly: true }),
         expect.objectContaining({ name: "data" }),
         expect.objectContaining({ name: "auth" }),
       ]),
     );
+    const paperlessVolume = spec.template.spec.volumes.find(
+      (volume) => volume.name === "paperless-api-token",
+    ) as { secret?: { secretName?: string; optional?: boolean; items?: unknown[] } } | undefined;
+    expect(paperlessVolume?.secret).toEqual({
+      secretName: "paperless-api-token",
+      optional: true,
+      items: [{ key: "api-token", path: "api-token" }],
+    });
     const claims = objects.filter((object) => object.kind === "PersistentVolumeClaim");
     expect(claims.map((claim) => claim.metadata?.name).sort()).toEqual([
       "klaus-agent-auth",
@@ -141,5 +151,10 @@ describe("packaging and deployment examples", () => {
     expect(source).toContain("REPLACE_WITH_MCP_BEARER_TOKEN");
     expect(source).toContain("REPLACE_WITH_KANEO_API_KEY");
     expect(source).not.toMatch(/\d{8,}:[A-Za-z0-9_-]{20,}/);
+
+    const paperlessSource = await readFile("deploy/k3s/paperless-secret.example.yaml", "utf8");
+    expect(paperlessSource).toContain("paperless-api-token");
+    expect(paperlessSource).toContain("REPLACE_WITH_DEDICATED_PAPERLESS_API_TOKEN");
+    expect(paperlessSource).not.toMatch(/\d{8,}:[A-Za-z0-9_-]{20,}/);
   });
 });

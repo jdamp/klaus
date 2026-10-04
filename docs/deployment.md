@@ -56,14 +56,22 @@ are mounted read-only.
    account and set `kaneo-api-key`; do not reuse a personal key. If enabling Mealie, first upgrade it
    to 3.23.0 or newer and configure its AI provider. The Mealie key lives in a **separate** Secret
    named `mealie-api-key`, under data key `MEALIE_API_KEY`; mount it as `/run/secrets/mealie/api-key`.
-   Never commit the key.
+   Paperless remains disabled by default. Only after completing the Paperless staging review below,
+   copy `deploy/k3s/paperless-secret.example.yaml` outside the repository, replace its placeholder,
+   and apply it as the separate `paperless-api-token` Secret. The optional read-only volume is inert
+   while Paperless configuration is omitted. Never commit any generated Secret or real key.
 3. Replace the example Telegram IDs, provider/model selection, and Home Assistant MCP URL in the
    ConfigMap. The Kaneo entry uses the pinned package over stdio and an explicit non-destructive
    project/task allowlist. The optional Mealie section is commented out until its endpoint and key
    have been reviewed; when enabled it exposes only recipe and non-destructive organizer tools.
    Set `mealie.baseUrl` to the internal API service and `mealie.publicUrl` to the browser-accessible
    origin (currently recorded in the separate `mealie-config` ConfigMap as `MEALIE_BASE_URL`); the
-   application reads these values from `klaus-agent-config`, not environment variables. MCP servers
+   application reads these values from `klaus-agent-config`, not environment variables. Keep the
+   `paperless` block commented out unless its separate opt-in review is complete. When approved,
+   set its `baseUrl` to the API root (including any application subpath), `publicUrl` to the
+   user-accessible Paperless application root, and `apiTokenFile` to
+   `/run/secrets/paperless/api-token`. Configure only bounded limits and the reviewed staging
+   contract; these values are read from `klaus-agent-config`, not environment variables. MCP servers
    use `exposure: deferred` by default: their permitted tools are loaded with `tool_search` when
    needed. Set `exposure: direct` for a small catalogue that should be declared from the first model
    call. Omitting `tools` permits the full discovered catalogue, a non-empty list restricts it, and
@@ -146,6 +154,36 @@ rollout. Record the image digest, configuration revision, time, tester, and resu
 Do not enable locks, alarms, garage doors, or other critical infrastructure. Do not check off an
 action test unless the physical/service result was independently observed. If an action has an
 indeterminate audit outcome, inspect the target state manually before attempting it again.
+
+## Paperless activation checklist
+
+Paperless must remain disabled unless the operator separately approves it. The checked-in ConfigMap
+omits Paperless configuration and the deployment's Paperless Secret volume is optional. The example
+Secret contains only a placeholder; it does not establish an instance URL, installed version, or
+permission model.
+
+Before enabling against a household instance:
+
+1. Review a staging instance's installed release and confirm its authenticated API v10 response
+   headers and task/document schemas. Do not infer compatibility from the latest upstream release.
+2. Create a distinct least-privilege API token and store it only in the separate read-only Secret
+   file. Review the single shared account's document visibility, correspondent/type/tag permissions,
+   and which authorized private chats and the one allowlisted group can invoke Klaus.
+3. Review Paperless workflows, default ownership, and metadata overrides. Confirm uploaded documents
+   will be visible to the household UI accounts where intended; Klaus does not change Paperless
+   permissions or workflows.
+4. Against disposable staging records, verify search/read, organizer create/rename/assignment, PDF,
+   JPEG, and PNG upload receipts/status, rejected formats, denied access, group triggers, uncertain
+   submissions, and recovery after an outage. Confirm no automatic retry or Telegram PDF delivery.
+5. Back up SQLite and Pi authentication state, add the reviewed `paperless` block and separate
+   Secret, then roll out with the standard Recreate procedure. Confirm `/ready`, tool outcomes, and
+   that receipts survive a restart before allowing household use.
+
+Rollback removes the Paperless configuration and optional Secret mount (and may revoke the dedicated
+API token) before redeploying the previous image. Keep SQLite receipt history and deduplication
+tombstones; do not automatically replay an uncertain upload or delete remotely created documents.
+No staging or household endpoint has been inspected as part of this change, and household activation
+is not authorized by this checklist.
 
 ## Rollout and replacement
 

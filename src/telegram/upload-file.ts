@@ -112,12 +112,16 @@ export class TelegramUploadFileLoader {
     private readonly timeoutMs: number,
   ) {}
 
-  async load(attachment: TelegramUploadAttachment): Promise<TrustedUploadFile> {
+  async load(
+    attachment: TelegramUploadAttachment,
+    parentSignal?: AbortSignal,
+  ): Promise<TrustedUploadFile> {
     if (!this.api.getFile || !this.api.downloadFile) {
       throw new UploadFileError("unavailable", "Telegram attachment retrieval is unavailable.");
     }
     const reference = fileReference(attachment, this.maxBytes);
-    const signal = AbortSignal.timeout(this.timeoutMs);
+    const timeout = AbortSignal.timeout(this.timeoutMs);
+    const signal = parentSignal ? AbortSignal.any([parentSignal, timeout]) : timeout;
     try {
       const telegramFile = await this.api.getFile(reference.fileId, signal);
       if (telegramFile.file_size !== undefined && telegramFile.file_size > this.maxBytes) {
