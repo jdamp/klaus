@@ -141,6 +141,17 @@ describe("Paperless API v10 client", () => {
     ).rejects.toThrow("attachment limit");
   });
 
+  it("sanitizes transport failures that contain the configured token", async () => {
+    const token = "highly-sensitive-token";
+    const client = new PaperlessClient(config, token, async () => {
+      throw new Error(`fetch failed with Authorization: Token ${token}`);
+    });
+    await expect(client.probe()).rejects.toThrow(
+      "Paperless request failed before a response was received",
+    );
+    await expect(client.probe()).rejects.not.toThrow(token);
+  });
+
   it("rejects a failed request with a typed status error", async () => {
     const client = new PaperlessClient(
       config,

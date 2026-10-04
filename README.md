@@ -287,6 +287,17 @@ Review Paperless object permissions and default workflows for the automation acc
 Documents uploaded by Klaus may not be visible to household UI accounts unless Paperless permissions
 or workflows provide that visibility. Tokens are sent only as `Authorization: Token` headers.
 
+The native tools provide bounded `paperless_search_documents` and `paperless_get_document`,
+`paperless_update_document`, and explicit list/create/rename operations for tags, correspondents, and
+document types. Search accepts one of Paperless's current `text`, `title_search`, or advanced `query`
+modes, plus date and exact organizer filters; tag filters explicitly use `any` or `all` matching.
+Name references must match exactly and ambiguous names are rejected. Metadata updates change only
+supplied fields; `tags: []` clears tags, and a null correspondent or document type clears that
+assignment. Document reading returns metadata and chunked OCR, latest version by default, with an
+offset for continuation and optional version selection. OCR is private document content: it reaches
+the configured model and existing session/tool-audit retention when requested, and is not copied to
+shared memory automatically.
+
 Telegram uploads are limited to validated, bounded current-message PDF, JPEG, or PNG attachments
 and require an explicit upload request; PDF bytes are not sent to the model. Telegram images retain
 their existing visual-input behavior, including WEBP, which is not in the initial upload format set.

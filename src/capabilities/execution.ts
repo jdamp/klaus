@@ -92,6 +92,7 @@ export function nativeTool<T>(options: {
   parse: (value: unknown) => T;
   execute: (args: T, signal: AbortSignal) => Promise<unknown>;
   timeoutMs?: number;
+  auditContext?: (toolCallId: string) => NativeAuditContext;
 }): ToolDefinition {
   return defineTool({
     name: options.name,
@@ -107,7 +108,7 @@ export function nativeTool<T>(options: {
           (combined) => options.execute(args, combined),
           signal,
           options.timeoutMs ? { timeoutMs: options.timeoutMs } : undefined,
-          { toolCallId },
+          { toolCallId, ...options.auditContext?.(toolCallId) },
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],

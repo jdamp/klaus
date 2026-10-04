@@ -1,11 +1,14 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { ComponentHealth } from "../../app/lifecycle.js";
-import type { CapabilityProvider } from "../../capabilities/types.js";
+import type { CapabilityBinding, CapabilityProvider } from "../../capabilities/types.js";
 import { NativeToolExecutor } from "../../capabilities/execution.js";
 import type { ToolAuditRepository } from "../../persistence/repositories.js";
 import type { SecretRedactor } from "../../security/secrets.js";
 import type { TurnContextRegistry } from "../../agent/turn-context.js";
+import { PaperlessDocumentService } from "./documents.js";
+import { PaperlessOrganizerService } from "./organizers.js";
+import { paperlessTools } from "./tools.js";
 import {
   PaperlessClient,
   PaperlessHttpError,
@@ -17,6 +20,8 @@ export class PaperlessProvider implements CapabilityProvider {
   readonly id = "paperless";
   readonly #client: PaperlessClient;
   readonly #executor: NativeToolExecutor;
+  readonly #documents: PaperlessDocumentService;
+  readonly #organizers: PaperlessOrganizerService;
   readonly #turnContexts: TurnContextRegistry;
   readonly #allowedChats: ReadonlySet<string>;
   readonly #allowedUsers: ReadonlySet<string>;
@@ -35,12 +40,15 @@ export class PaperlessProvider implements CapabilityProvider {
   ) {
     redactor.add(token);
     this.#client = new PaperlessClient(config, token, fetcher);
-    this.#executor = new NativeToolExecutor(
-      audits,
-      redactor,
-      this.id,
-      { timeoutMs: config.requestTimeoutMs, maxResultBytes: config.maxResultBytes },
-      (signal) => this.#ensureAvailable(signal),
+    this.#executor = new NativeToolExecutor(audits, redactor, this.id, {
+      timeoutMs: config.requestTimeoutMs,
+      maxResultBytes: config.maxResultBytes,
+    });
+    this.#organizers = new PaperlessOrganizerService(this.#client);
+    this.#documents = new PaperlessDocumentService(
+      this.#client,
+      this.#organizers,
+      config.publicUrl,
     );
     this.#turnContexts = turnContexts;
     this.#allowedChats = allowedChats;
@@ -59,8 +67,26 @@ export class PaperlessProvider implements CapabilityProvider {
     return { service: this.#state };
   }
 
-  tools(): readonly ToolDefinition[] {
-    return [];
+  tools(binding?: CapabilityBinding): readonly ToolDefinition[] {
+    const sessionId = binding?.sessionId;
+    if (!sessionId) return [];
+    return paperlessTools({
+      sessionId,
+      executor: this.#executor,
+      documents: this.#documents,
+      organizers: this.#organizers,
+      guard: (activeSessionId, signal, callback) => this.#run(activeSessionId, signal, callback),
+      auditContext: (activeSessionId) => {
+        const updateId = this.#turnContexts.get(activeSessionId)?.updateId;
+        return updateId ? { updateId } : {};
+      },
+    });
+  }
+
+  async #run<T>(sessionId: string, signal: AbortSignal, callback: () => Promise<T>): Promise<T> {
+    this.#requireTrustedContext(sessionId);
+    await this.#ensureAvailable(signal);
+    return callback();
   }
 
   async #ensureAvailable(signal: AbortSignal): Promise<void> {

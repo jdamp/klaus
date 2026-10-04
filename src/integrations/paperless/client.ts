@@ -58,6 +58,14 @@ export class PaperlessClient {
     );
   }
 
+  getOrganizer(
+    collection: Exclude<PaperlessCollection, "documents">,
+    id: number,
+    signal?: AbortSignal,
+  ) {
+    return this.json("GET", `/api/${collection}/${positiveId(id)}/`, undefined, signal);
+  }
+
   updateDocument(id: number, patch: Record<string, unknown>, signal?: AbortSignal) {
     return this.json("PATCH", `/api/documents/${positiveId(id)}/`, undefined, signal, patch);
   }
@@ -141,17 +149,22 @@ export class PaperlessClient {
         url.searchParams.set(key, Array.isArray(value) ? value.join(",") : String(value));
       }
     }
-    const response = await this.#fetch(url, {
-      method,
-      headers: {
-        Authorization: `Token ${this.#token}`,
-        Accept: "application/json; version=10",
-        ...(typeof body === "string" ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body === undefined ? {} : { body }),
-      redirect: "error",
-      ...(signal ? { signal } : {}),
-    });
+    let response: Response;
+    try {
+      response = await this.#fetch(url, {
+        method,
+        headers: {
+          Authorization: `Token ${this.#token}`,
+          Accept: "application/json; version=10",
+          ...(typeof body === "string" ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(body === undefined ? {} : { body }),
+        redirect: "error",
+        ...(signal ? { signal } : {}),
+      });
+    } catch {
+      throw new Error("Paperless request failed before a response was received");
+    }
     const text = await readBounded(response, this.#config.maxResponseBytes);
     if (!response.ok)
       throw new PaperlessHttpError(`Paperless HTTP ${response.status}`, response.status);
@@ -177,7 +190,12 @@ export class PaperlessClient {
 
 async function readBounded(response: Response, maxBytes: number): Promise<string> {
   if (!response.body) {
-    const text = await response.text();
+    let text: string;
+    try {
+      text = await response.text();
+    } catch {
+      throw new Error("Paperless response could not be read");
+    }
     if (Buffer.byteLength(text, "utf8") > maxBytes) {
       throw new Error("Paperless response exceeded the configured limit");
     }
@@ -186,17 +204,22 @@ async function readBounded(response: Response, maxBytes: number): Promise<string
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let exceeded = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
       if (size > maxBytes) {
+        exceeded = true;
         await reader.cancel();
         throw new Error("Paperless response exceeded the configured limit");
       }
       chunks.push(value);
     }
+  } catch {
+    if (exceeded) throw new Error("Paperless response exceeded the configured limit");
+    throw new Error("Paperless response could not be read");
   } finally {
     reader.releaseLock();
   }
