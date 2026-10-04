@@ -7,15 +7,18 @@ import type {
   TelegramEntity,
   TelegramMessage,
   TelegramUpdate,
+  TelegramUploadAttachment,
 } from "./types.js";
 
 export type AdmissionPolicy = {
   allowedUsers: ReadonlySet<string>;
   allowedChats: ReadonlySet<string>;
+  paperlessEnabled?: boolean;
 };
 
 const IMAGE_EXTENSIONS = /\.(?:jpe?g|png|webp|gif|apng|avif|tiff?|bmp)$/iu;
 const NEUTRAL_VISUAL_PROMPT = "Please respond to the attached image.";
+const NEUTRAL_DOCUMENT_PROMPT = "What would you like me to do with this document?";
 
 function entityText(text: string, entity: TelegramEntity): string {
   return text.slice(entity.offset, entity.offset + entity.length);
@@ -113,6 +116,24 @@ function visualAttachment(message: TelegramMessage) {
   return undefined;
 }
 
+function uploadAttachment(message: TelegramMessage): TelegramUploadAttachment | undefined {
+  if (message.photo && message.photo.length > 0) {
+    return { kind: "photo", variants: message.photo };
+  }
+  const document = message.document;
+  if (!document) return undefined;
+  const mime = document.mime_type?.toLowerCase();
+  const name = document.file_name?.toLowerCase() ?? "";
+  const supported =
+    mime === "application/pdf" ||
+    mime === "image/jpeg" ||
+    mime === "image/png" ||
+    /\\.pdf$/u.test(name) ||
+    /\\.jpe?g$/u.test(name) ||
+    /\\.png$/u.test(name);
+  return supported ? { kind: "document", document } : undefined;
+}
+
 export function admitUpdate(
   update: TelegramUpdate,
   policy: AdmissionPolicy,
@@ -162,11 +183,12 @@ export function admitUpdate(
     message.sticker
   )
     return undefined;
-  if (message.document && !imageDocument(message.document)) return undefined;
+  const paperlessUpload = policy.paperlessEnabled ? uploadAttachment(message) : undefined;
+  if (message.document && !imageDocument(message.document) && !paperlessUpload) return undefined;
 
   const source = captionOrText(message);
   const visual = visualAttachment(message);
-  if (!source?.text.trim() && !visual) return undefined;
+  if (!source?.text.trim() && !visual && !paperlessUpload) return undefined;
 
   const chatId = message.chat.id.toString();
   const senderId = message.from.id.toString();
@@ -181,9 +203,11 @@ export function admitUpdate(
   const groupText = source ? withoutBotMentions(source.text, source.entities, bot) : "";
   const text =
     message.chat.type === "private"
-      ? source?.text.trim() || (visual ? NEUTRAL_VISUAL_PROMPT : "")
-      : groupText || (visual ? NEUTRAL_VISUAL_PROMPT : "");
-  if (!text && !visual) return undefined;
+      ? source?.text.trim() ||
+        (visual ? NEUTRAL_VISUAL_PROMPT : paperlessUpload ? NEUTRAL_DOCUMENT_PROMPT : "")
+      : groupText ||
+        (visual ? NEUTRAL_VISUAL_PROMPT : paperlessUpload ? NEUTRAL_DOCUMENT_PROMPT : "");
+  if (!text && !visual && !paperlessUpload) return undefined;
 
   const base = {
     updateId: update.update_id.toString(),
@@ -194,6 +218,7 @@ export function admitUpdate(
     messageId: message.message_id.toString(),
     text,
     ...(visual ? { visual } : {}),
+    ...(paperlessUpload ? { uploadAttachment: paperlessUpload } : {}),
   };
   return command ? { kind: "command", ...base, command } : { kind: "message", ...base };
 }

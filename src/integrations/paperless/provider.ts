@@ -9,6 +9,7 @@ import type { TurnContextRegistry } from "../../agent/turn-context.js";
 import { PaperlessDocumentService } from "./documents.js";
 import { PaperlessOrganizerService } from "./organizers.js";
 import { paperlessTools } from "./tools.js";
+import type { PaperlessUploadReceiptRepository } from "./receipts.js";
 import {
   PaperlessClient,
   PaperlessHttpError,
@@ -37,6 +38,7 @@ export class PaperlessProvider implements CapabilityProvider {
     allowedChats: ReadonlySet<string>,
     allowedUsers: ReadonlySet<string>,
     fetcher?: PaperlessFetch,
+    receipts?: PaperlessUploadReceiptRepository,
   ) {
     redactor.add(token);
     this.#client = new PaperlessClient(config, token, fetcher);
@@ -53,9 +55,13 @@ export class PaperlessProvider implements CapabilityProvider {
     this.#turnContexts = turnContexts;
     this.#allowedChats = allowedChats;
     this.#allowedUsers = allowedUsers;
+    this.#receipts = receipts;
   }
 
+  #receipts: PaperlessUploadReceiptRepository | undefined;
+
   async start(signal: AbortSignal): Promise<void> {
+    this.#receipts?.markOrphanedSubmittingIndeterminate();
     await this.#refresh(AbortSignal.any([signal, AbortSignal.timeout(10_000)]));
   }
 

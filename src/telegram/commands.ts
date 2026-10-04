@@ -37,5 +37,6 @@ export function commandHelp(): string {
   return [
     "Available commands:",
     ...TELEGRAM_COMMANDS.map((command) => `/${command.name} - ${command.description}`),
+    "Paperless uploads (when configured) support PDF, JPEG, and PNG and require an explicit request. A bare PDF only asks what you want done; to upload it after clarification, resend it with an explicit caption. WEBP can be viewed by an image-capable model but cannot be uploaded to Paperless.",
   ].join("\n");
 }

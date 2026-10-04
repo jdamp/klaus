@@ -1,9 +1,13 @@
+import type { TelegramChat, TelegramUploadAttachment } from "../telegram/types.js";
+
 export type TrustedTurnContext = {
   chatId: string;
+  chatType?: TelegramChat["type"];
   messageId: string;
   updateId: string;
   senderId: string;
   senderLabel?: string;
+  uploadAttachment?: TelegramUploadAttachment;
 };
 
 export class TurnContextRegistry {

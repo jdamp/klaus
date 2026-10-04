@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AgentTurnHandler, UserCancelledTurnError } from "../src/agent/turn.js";
 import { AppDatabase } from "../src/persistence/database.js";
 import { OutboxRepository } from "../src/persistence/repositories.js";
+import { TurnContextRegistry } from "../src/agent/turn-context.js";
 import type { AcceptedTelegramInput } from "../src/telegram/types.js";
 import type { TelegramVisualInputLoader } from "../src/telegram/visual-input.js";
 
@@ -134,6 +135,74 @@ describe("agent turn translation", () => {
     const row = database.connection.prepare("SELECT text FROM outbox_messages").get() as
       { text: string } | undefined;
     expect(row?.text).toContain("does not support image input");
+    database.close();
+  });
+
+  it("binds only the accepted current-message attachment and clears it after cancellation", async () => {
+    const database = new AppDatabase(":memory:");
+    database.migrate();
+    const contexts = new TurnContextRegistry();
+    const forgedAttachment = {
+      kind: "document",
+      document: {
+        file_id: "telegram-current-file",
+        file_name: "household.pdf",
+        mime_type: "application/pdf",
+        sourceUrl: "https://attacker.test/other-file",
+      },
+    };
+    const pdfInput: AcceptedTelegramInput = {
+      ...input,
+      chatType: "group",
+      text: "What would you like me to do with this document?",
+      uploadAttachment: forgedAttachment as unknown as NonNullable<
+        AcceptedTelegramInput["uploadAttachment"]
+      >,
+    };
+    let promptOptions: unknown = "not-called";
+    const registry = {
+      consumeUserCancellation: () => true,
+      get: async () => ({
+        session: {
+          prompt: async (_text: string, options?: unknown) => {
+            promptOptions = options;
+            expect(contexts.require("session")).toMatchObject({
+              chatId: "10",
+              chatType: "group",
+              updateId: "1",
+              messageId: "2",
+              uploadAttachment: {
+                kind: "document",
+                document: {
+                  file_id: "telegram-current-file",
+                  file_name: "household.pdf",
+                  mime_type: "application/pdf",
+                },
+              },
+            });
+            expect(contexts.require("session").uploadAttachment).not.toHaveProperty(
+              "document.sourceUrl",
+            );
+          },
+          messages: [],
+        },
+        persist: () => undefined,
+        dispose: () => undefined,
+      }),
+    };
+    const handler = new AgentTurnHandler(
+      registry as never,
+      new OutboxRepository(database),
+      undefined,
+      undefined,
+      undefined,
+      contexts,
+    );
+    await expect(handler.handle(pdfInput, "session")).rejects.toBeInstanceOf(
+      UserCancelledTurnError,
+    );
+    expect(promptOptions).toBeUndefined();
+    expect(contexts.get("session")).toBeUndefined();
     database.close();
   });
 

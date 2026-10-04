@@ -172,6 +172,26 @@ const migrations = [
   `ALTER TABLE tool_executions ADD COLUMN tool_call_id TEXT;`,
   `CREATE INDEX IF NOT EXISTS outbox_pending_order_idx
       ON outbox_messages(state, created_at, sequence);`,
+  `CREATE TABLE paperless_upload_receipts (
+      id TEXT PRIMARY KEY,
+      provider_id TEXT NOT NULL CHECK (provider_id = 'paperless'),
+      update_id TEXT NOT NULL,
+      attachment_key TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('submitting','indeterminate','accepted','pending','started','consumed','failed','revoked','submission_failed')),
+      task_id TEXT,
+      document_ids_json TEXT NOT NULL DEFAULT '[]',
+      detail_code TEXT CHECK (detail_code IS NULL OR length(detail_code) <= 80),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (provider_id, update_id, attachment_key)
+    );
+    CREATE INDEX paperless_upload_receipts_origin_idx
+      ON paperless_upload_receipts(chat_id, created_at DESC);
+    CREATE INDEX paperless_upload_receipts_state_idx
+      ON paperless_upload_receipts(state, updated_at);`,
 ] as const;
 
 export class AppDatabase {

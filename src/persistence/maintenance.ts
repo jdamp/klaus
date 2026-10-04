@@ -32,6 +32,12 @@ export class MaintenanceRepository {
            WHERE created_at < ? AND state IN ('sent','cancelled')`,
         )
         .run(value);
+      this.database.connection
+        .prepare(
+          `UPDATE paperless_upload_receipts SET detail_code=NULL
+           WHERE updated_at < ? AND detail_code IS NOT NULL`,
+        )
+        .run(value);
       this.database.connection.exec("COMMIT");
     } catch (error) {
       this.database.connection.exec("ROLLBACK");

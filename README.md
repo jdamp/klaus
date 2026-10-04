@@ -299,7 +299,24 @@ the configured model and existing session/tool-audit retention when requested, a
 shared memory automatically.
 
 Telegram uploads are limited to validated, bounded current-message PDF, JPEG, or PNG attachments
-and require an explicit upload request; PDF bytes are not sent to the model. Telegram images retain
+and require an explicit upload request. The default maximum is 10 MiB (configurable up to 20 MiB).
+PDF bytes are submitted directly to Paperless and are not sent to the model; OCR may be read later
+only through the document-read tool. JPEG/PNG attachments keep the existing visual-input behavior,
+and WEBP remains visual-only (not uploadable).
+
+Examples (Paperless must be configured, and the existing authorized user/chat rules still apply):
+
+- Private chat: attach `bill.pdf` with a caption such as “Upload this to Paperless as the May
+  electricity bill; tag Utilities.”
+- The allowlisted household group: reply to Klaus or mention `@klaus_bot` in the PDF caption, for
+  example “@klaus_bot upload this bill to Paperless with title May electricity bill.” Ambient group
+  attachments are not processed.
+
+A bare PDF is admitted only to ask what you want done; it is not upload consent. If you decide to
+archive it after that clarification, resend it as a new message with an explicit upload caption.
+Klaus can access only the attachment attached to the currently admitted Telegram turn. Conversational
+intent guidance does not grant additional authority: tool schemas, trusted chat/sender checks,
+content-signature validation, and upload receipts enforce the actual limits. Telegram images retain
 their existing visual-input behavior, including WEBP, which is not in the initial upload format set.
 Paperless acknowledges ingestion asynchronously: an accepted upload is not yet a consumed document,
 and a durable receipt can be checked for processing status. Uncertain submissions are never

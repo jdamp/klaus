@@ -9,6 +9,7 @@ import {
   UpdateRepository,
 } from "../src/persistence/repositories.js";
 import { admitUpdate } from "../src/telegram/admission.js";
+import { commandHelp } from "../src/telegram/commands.js";
 import { TelegramHttpClient, type TelegramApi } from "../src/telegram/client.js";
 import { TelegramPoller } from "../src/telegram/poller.js";
 import { TelegramRouter } from "../src/telegram/router.js";
@@ -175,6 +176,19 @@ describe("Telegram HTTP client", () => {
       throw new Error("unreachable");
     });
     await expect(timeout.downloadFile("photos/a", 4, 1)).rejects.toThrow("timed out");
+
+    const cancelled = new AbortController();
+    cancelled.abort();
+    const cancellationClient = new TelegramHttpClient("secret", async (_input, init) => {
+      if (init?.signal?.aborted) throw new Error("cancelled upstream request with token secret");
+      return new Response(new Uint8Array([1]));
+    });
+    await expect(
+      cancellationClient.downloadFile("photos/a", 4, 1000, cancelled.signal),
+    ).rejects.toThrow("timed out or was cancelled");
+    await expect(
+      cancellationClient.downloadFile("photos/a", 4, 1000, cancelled.signal),
+    ).rejects.not.toThrow("token secret");
   });
 
   it("omits a parse mode for plain text", async () => {
@@ -216,6 +230,12 @@ describe("Telegram HTTP client", () => {
 });
 
 describe("Telegram admission", () => {
+  it("documents current-message Paperless consent and safe format limits in help", () => {
+    const help = commandHelp();
+    expect(help).toContain("bare PDF only asks what you want done");
+    expect(help).toContain("resend it with an explicit caption");
+    expect(help).toContain("WEBP can be viewed");
+  });
   it("requires both sender and chat allowlists before exposing content", () => {
     expect(admitUpdate(update(), policy, bot)?.text).toBe("hello");
     expect(
@@ -467,6 +487,57 @@ describe("Telegram admission", () => {
       },
     });
     expect(admitUpdate(nonImage, policy, bot)).toBeUndefined();
+  });
+
+  it("admits bounded Paperless upload candidates only when enabled and preserves group triggers", () => {
+    const paperlessPolicy = { ...policy, paperlessEnabled: true };
+    const pdf = update({
+      message: {
+        message_id: 8,
+        from: { id: 1 },
+        chat: { id: 1, type: "private" },
+        document: { file_id: "pdf-file", file_name: "bill.pdf", mime_type: "application/pdf" },
+      },
+    });
+    expect(admitUpdate(pdf, policy, bot)).toBeUndefined();
+    expect(admitUpdate(pdf, paperlessPolicy, bot)).toMatchObject({
+      text: "What would you like me to do with this document?",
+      uploadAttachment: { kind: "document", document: { file_id: "pdf-file" } },
+    });
+
+    const groupPdf = update({
+      message: {
+        message_id: 9,
+        from: { id: 1 },
+        chat: { id: -100, type: "group" },
+        document: { file_id: "group-pdf", file_name: "bill.pdf", mime_type: "application/pdf" },
+        caption: "@klaus_bot please add this",
+        caption_entities: [{ type: "mention", offset: 0, length: 10 }],
+      },
+    });
+    expect(admitUpdate(groupPdf, paperlessPolicy, bot)).toMatchObject({
+      text: "please add this",
+      uploadAttachment: { kind: "document" },
+    });
+    expect(
+      admitUpdate(
+        update({
+          message: { ...groupPdf.message!, caption: "please add this", caption_entities: [] },
+        }),
+        paperlessPolicy,
+        bot,
+      ),
+    ).toBeUndefined();
+
+    const unsupported = update({
+      message: {
+        message_id: 10,
+        from: { id: 1 },
+        chat: { id: 1, type: "private" },
+        document: { file_id: "zip-file", file_name: "archive.zip", mime_type: "application/zip" },
+      },
+    });
+    expect(admitUpdate(unsupported, paperlessPolicy, bot)).toBeUndefined();
   });
 
   it("supports commands in private image captions without downloading the image", () => {

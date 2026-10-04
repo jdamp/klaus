@@ -17,6 +17,7 @@ import { AgentToolCatalog } from "../capabilities/catalog.js";
 import type { CapabilityProvider } from "../capabilities/types.js";
 import { MealieProvider } from "../integrations/mealie/provider.js";
 import { PaperlessProvider } from "../integrations/paperless/provider.js";
+import { PaperlessUploadReceiptRepository } from "../integrations/paperless/receipts.js";
 import { TurnContextRegistry } from "../agent/turn-context.js";
 import { CodexImageGenerator } from "../image-generation/codex.js";
 import { ImageGenerationProvider } from "../image-generation/provider.js";
@@ -90,6 +91,7 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
   }
 
   const audits = new ToolAuditRepository(database);
+  const paperlessReceipts = new PaperlessUploadReceiptRepository(database);
   const outbox = new OutboxRepository(database, config.imageGeneration?.maxImageBytes);
   const turnContexts = new TurnContextRegistry();
   const memoryRepository = new MemoryRepository(database, config.memory);
@@ -111,6 +113,8 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
         turnContexts,
         new Set(config.telegram.allowedChats),
         new Set(config.telegram.allowedUsers),
+        undefined,
+        paperlessReceipts,
       ),
     );
   }
@@ -158,6 +162,7 @@ export async function buildApplication(configPath: string): Promise<BuiltApplica
     {
       allowedUsers: new Set(config.telegram.allowedUsers),
       allowedChats: new Set(config.telegram.allowedChats),
+      paperlessEnabled: config.paperless !== undefined,
     },
     new UpdateRepository(database),
     chats,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AppDatabase } from "../src/persistence/database.js";
 import { ToolAuditRepository } from "../src/persistence/repositories.js";
 import { PaperlessProvider } from "../src/integrations/paperless/provider.js";
+import { PaperlessUploadReceiptRepository } from "../src/integrations/paperless/receipts.js";
 import type { PaperlessConfig, PaperlessFetch } from "../src/integrations/paperless/client.js";
 import { SecretRedactor } from "../src/security/secrets.js";
 import { TurnContextRegistry } from "../src/agent/turn-context.js";
@@ -31,6 +32,7 @@ function provider(fetcher: PaperlessFetch) {
   database.migrate();
   const redactor = new SecretRedactor();
   const contexts = new TurnContextRegistry();
+  const receipts = new PaperlessUploadReceiptRepository(database);
   const instance = new PaperlessProvider(
     config,
     "paperless-test-token",
@@ -40,8 +42,9 @@ function provider(fetcher: PaperlessFetch) {
     new Set(["chat-1"]),
     new Set(["sender-1"]),
     fetcher,
+    receipts,
   );
-  return { instance, database, contexts };
+  return { instance, database, contexts, receipts };
 }
 
 describe("Paperless provider health and authorization", () => {
@@ -91,6 +94,28 @@ describe("Paperless provider health and authorization", () => {
     await wrongShape.instance.start(new AbortController().signal);
     expect(wrongShape.instance.health().service?.detail).toContain("response is incompatible");
     wrongShape.database.close();
+  });
+
+  it("marks an orphaned pre-POST receipt indeterminate on provider startup without replaying it", async () => {
+    let requests = 0;
+    const { instance, database, receipts } = provider(async () => {
+      requests += 1;
+      return response({ count: 0, results: [] });
+    });
+    const claimed = receipts.claim({
+      updateId: "update-orphan",
+      attachmentKey: "c".repeat(64),
+      chatId: "chat-1",
+      messageId: "message-1",
+      senderId: "sender-1",
+    }).receipt;
+    await instance.start(new AbortController().signal);
+    expect(receipts.findForChat(claimed.id, "chat-1")).toMatchObject({
+      state: "indeterminate",
+      detailCode: "restart_before_task_id_recorded",
+    });
+    expect(requests).toBe(1);
+    database.close();
   });
 
   it("requires the immutable trusted active sender and chat context", () => {

@@ -41,6 +41,31 @@ control.
 Restore refuses to overwrite an existing database and verifies SQLite integrity before and after
 the copy.
 
+## Paperless upload receipts
+
+The same SQLite backup includes the Paperless upload-receipt table. Receipts contain trusted Telegram
+origin IDs, an opaque attachment fingerprint, a submission state, and—when confirmed—a Paperless task
+UUID and verified document IDs. They never contain the API token or attachment bytes. Protect receipt
+backups like the rest of the Klaus database because the origin metadata and task references are
+operationally sensitive.
+
+`submitting` means Klaus durably claimed the current attachment before dispatch. On restart, any
+orphaned `submitting` receipt becomes `indeterminate`; startup never repeats the POST. `accepted`,
+`pending`, and `started` mean Paperless accepted a task but do not mean a document was consumed.
+Only a verified successful task outcome and readable document identity is reported as `consumed`.
+`failed`/`revoked` are remote task outcomes. An indeterminate receipt means Paperless may have
+accepted the upload; inspect Paperless and use the receipt's status lookup when a task UUID is known.
+Never automatically retry an indeterminate submission or describe a local timeout as cancelling the
+Paperless task. A deliberate resend is a new Telegram message and therefore a separate user action.
+
+Database retention may clear the small detail code after its cutoff, but it preserves the receipt ID,
+origin scope, attachment deduplication tombstone, state, and known task/document references. Do not
+drop the receipt table, delete indeterminate/accepted rows, or remove tombstones as part of routine
+cleanup. Rollback disables Paperless by removing its optional config/secret mount or reverting the
+application image; it does not drop receipt history or automatically delete remotely created
+Paperless documents. Back up SQLite before rollout and restore the matching backup if a database
+rollback is necessary.
+
 ## Migration and upgrade
 
 Migrations run transactionally and idempotently at startup before Telegram polling begins.

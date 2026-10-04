@@ -13,6 +13,7 @@ import {
   ToolAuditRepository,
 } from "../src/persistence/repositories.js";
 import { MemoryRepository } from "../src/memory/repository.js";
+import { PaperlessUploadReceiptRepository } from "../src/integrations/paperless/receipts.js";
 
 const memoryLimits = {
   overviewMaxBytes: 8 * 1024,
@@ -67,6 +68,15 @@ describe("SQLite backup and restore", () => {
     const sentLease = outbox.lease(new Date(), 1_000);
     expect(sentLease?.id).toBe("sent");
     outbox.sent("sent", "telegram-2");
+    const receipts = new PaperlessUploadReceiptRepository(source);
+    const uploadReceipt = receipts.claim({
+      updateId: "telegram-update-1",
+      attachmentKey: "d".repeat(64),
+      chatId: "1",
+      messageId: "telegram-message-1",
+      senderId: "1",
+    }).receipt;
+    receipts.markAccepted(uploadReceipt.id, "f4c3b2a1-1234-4abc-9def-0123456789ab");
     const audits = new ToolAuditRepository(source);
     const completedAudit = audits.start("home", "light", { on: true });
     audits.finish(completedAudit, "success", { ok: true });
@@ -103,6 +113,12 @@ describe("SQLite backup and restore", () => {
       { tool_name: "vacuum", status: "started" },
     ]);
     expect(new ToolAuditRepository(restored).markInterruptedIndeterminate()).toBe(1);
+    expect(
+      new PaperlessUploadReceiptRepository(restored).findForChat(uploadReceipt.id, "1"),
+    ).toMatchObject({
+      state: "accepted",
+      taskId: "f4c3b2a1-1234-4abc-9def-0123456789ab",
+    });
     const restoredMemory = new MemoryRepository(restored, memoryLimits);
     restoredMemory.rebuildSearchIndex();
     expect(restoredMemory.read(saved.id)).toMatchObject({

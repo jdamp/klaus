@@ -1,5 +1,5 @@
 import type { ChatRepository, OutboxRepository } from "../persistence/repositories.js";
-import type { AcceptedTelegramInput } from "../telegram/types.js";
+import type { AcceptedTelegramInput, TelegramUploadAttachment } from "../telegram/types.js";
 import { VisualInputError, visualInputErrorMessage } from "../telegram/visual-input.js";
 import type { TelegramVisualInputLoader } from "../telegram/visual-input.js";
 import { enqueueRenderedAgentResponse, enqueueResponse } from "../delivery/intents.js";
@@ -8,6 +8,33 @@ import type { TurnContextRegistry } from "./turn-context.js";
 import { extractFinalText } from "./pi-runtime.js";
 import { attributedUserPrompt, type MemoryTurnContextRegistry } from "../memory/context.js";
 import { OVERVIEW_ID, type MemoryRepository } from "../memory/repository.js";
+
+function snapshotUploadAttachment(
+  attachment: TelegramUploadAttachment | undefined,
+): TelegramUploadAttachment | undefined {
+  if (!attachment) return undefined;
+  if (attachment.kind === "document") {
+    const { file_id, file_name, file_size, mime_type } = attachment.document;
+    return {
+      kind: "document",
+      document: {
+        file_id,
+        ...(file_name === undefined ? {} : { file_name }),
+        ...(file_size === undefined ? {} : { file_size }),
+        ...(mime_type === undefined ? {} : { mime_type }),
+      },
+    };
+  }
+  return {
+    kind: "photo",
+    variants: attachment.variants.map(({ file_id, file_size, width, height }) => ({
+      file_id,
+      width,
+      height,
+      ...(file_size === undefined ? {} : { file_size }),
+    })),
+  };
+}
 
 export class UserCancelledTurnError extends Error {
   constructor() {
@@ -36,10 +63,14 @@ export class AgentTurnHandler {
     try {
       turnContextToken = this.turnContexts?.set(sessionId, {
         chatId: input.chatId,
+        chatType: input.chatType,
         messageId: input.messageId,
         updateId: input.updateId,
         senderId: input.senderId,
         ...(input.senderLabel ? { senderLabel: input.senderLabel } : {}),
+        ...(input.uploadAttachment
+          ? { uploadAttachment: snapshotUploadAttachment(input.uploadAttachment)! }
+          : {}),
       });
       let prompt = input.text;
       const images = input.visual

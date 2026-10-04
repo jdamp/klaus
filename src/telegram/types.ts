@@ -118,6 +118,8 @@ export type TelegramVisualAttachment =
   | { kind: "photo"; variants: readonly TelegramPhotoSize[] }
   | { kind: "document"; document: TelegramDocument };
 
+export type TelegramUploadAttachment = TelegramVisualAttachment;
+
 type AcceptedTelegramInputBase = {
   updateId: string;
   chatId: string;
@@ -127,6 +129,7 @@ type AcceptedTelegramInputBase = {
   messageId: string;
   text: string;
   visual?: TelegramVisualAttachment;
+  uploadAttachment?: TelegramUploadAttachment;
 };
 
 export type AcceptedTelegramInput = AcceptedTelegramInputBase &
